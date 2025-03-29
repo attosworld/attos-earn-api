@@ -6,6 +6,7 @@
     "start": "bun run index.ts"
   },
   "devDependencies": {
+    "@flydotio/dockerfile": "^0.7.9",
     "@types/bun": "latest"
   },
   "peerDependencies": {
