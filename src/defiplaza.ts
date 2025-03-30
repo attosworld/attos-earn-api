@@ -39,6 +39,14 @@ export async function defiplazaLpInfo(lpResource: string, amount: string) {
   return lpInfo;
 }
 
+export interface PairState {
+  p0: string;
+  shortage: 'QuoteShortage' | 'BaseShortage';  // Assuming these are the only possible values
+  target_ratio: string;
+  last_outgoing: string;
+  last_out_spot: string;
+}
+
 export interface DefiplazaPairAnalytics {
   pair: {
     address: string;
@@ -94,6 +102,7 @@ export interface DefiplazaPairAnalytics {
     lpBaseUSD: number;
     lpQuoteUSD: number;
   }>;
+  pairState: PairState;
 }
 
 export async function getVolumeAndTokenMetadata(basePair: string) {
@@ -101,20 +110,36 @@ export async function getVolumeAndTokenMetadata(basePair: string) {
     method: 'GET',
     headers: { accept: 'application/json' },
   }).then(res => res.json() as Promise<DefiplazaPairAnalytics>)
-    .then(data => ({
-    alr_24h: data.pair.baseAPY,
-    alr_7d: data.pair.baseAPY7D,
-    tvl_usd: data.pair.tvlUSD,
-    volume_24h: data.stats[0].volumeUSD,
-    volume_7d: data.stats.slice(0, 6).reduce((acc, curr) => acc + curr.volumeUSD, 0),
-    left_alt: data.baseToken.symbol,
-    right_alt: data.baseToken.symbol,
-    left_icon: data.baseToken.iconUrl,
-    right_icon: data.baseToken.iconUrl,
-    left_name: data.baseToken.name,
-    right_name: data.baseToken.name,
-    baseLPToken: data.pair.baseLPToken,
-    quoteLPToken: data.pair.quoteLPToken,
-  }))
+    .then(data => {
+
+      const singleSide = data.pairState.shortage === 'QuoteShortage' ? 'base' : 'quote';
+
+      return ({
+        alr_24h: data.pair.baseAPY + data.pair.quoteAPY,
+        alr_7d: data.pair.baseAPY7D + data.pair.quoteAPY7D,
+        tvl_usd: data.pair.tvlUSD,
+        volume_24h: data.stats[0].volumeUSD,
+        volume_7d: data.stats.slice(0, 6).reduce((acc, curr) => acc + curr.volumeUSD, 0),
+        left_alt: data.baseToken.symbol,
+        right_alt: data.baseToken.symbol,
+        left_icon: data.baseToken.iconUrl,
+        right_icon: data.baseToken.iconUrl,
+        left_name: data.baseToken.name,
+        right_name: data.baseToken.name,
+        baseLPToken: data.pair.baseLPToken,
+        quoteLPToken: data.pair.quoteLPToken,
+        pairState: data.pairState,
+        single: {
+          side: singleSide,
+          alr_24h: singleSide === 'base'? data.pair.baseAPY : data.pair.quoteAPY,
+          alr_7d: singleSide === 'base'? data.pair.baseAPY7D : data.pair.quoteAPY7D,
+          tvl_usd: singleSide === 'base'? data.pair.baseTVL : data.pair.quoteTVL,
+          volume_24h: singleSide === 'base'? data.stats[0].lpBaseUSD : data.stats[0].lpQuoteUSD,
+          volume_7d: singleSide === 'base'
+            ? data.stats.slice(0, 6).reduce((acc, curr) => acc + curr.lpBaseUSD, 0)
+            : data.stats.slice(0, 6).reduce((acc, curr) => acc + curr.lpQuoteUSD, 0)
+        }
+      })
+    })
     .catch(() => null);
 }

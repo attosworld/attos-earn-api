@@ -138,6 +138,7 @@ export async function getAllPools(): Promise<Pool[]> {
 
       if (quote &&!PAIR_NAME_CACHE[quote.baseLPToken]) {
         PAIR_NAME_CACHE[quote.quoteLPToken] = {
+          provider: 'Defiplaza',
           name: `${base?.left_alt}/${quote?.right_alt}`,
           left_alt: base?.left_alt || '',
           left_icon: base?.left_icon || '',
@@ -148,6 +149,7 @@ export async function getAllPools(): Promise<Pool[]> {
 
       if (quote &&!PAIR_NAME_CACHE[quote.quoteLPToken]) {
         PAIR_NAME_CACHE[quote.quoteLPToken] = {
+          provider: 'Defiplaza',
           name: `${base?.left_alt}/${quote?.right_alt}`,
           left_alt: base?.left_alt || '',
           left_icon: base?.left_icon || '',
@@ -162,16 +164,16 @@ export async function getAllPools(): Promise<Pool[]> {
           pool_type: 'double',
           component: d.address,
           tvl: d.tvlUSD,
-          bonus_24h: (base?.alr_24h || 0) * 100,
-          bonus_7d: (base?.alr_7d || 0) * 100,
+          bonus_24h: (base?.alr_24h || 0) * 10,
+          bonus_7d: (base?.alr_7d || 0) * 10,
           base: d.baseToken,
           quote: d.quoteToken,
           volume_7d: base?.volume_7d || 0,
           volume_24h: base?.volume_24h || 0,
           bonus_name: 'ALR',
           left_alt: base?.left_alt || '',
-          right_alt: quote?.right_alt || '',
           left_icon: base?.left_icon || '',
+          right_alt: quote?.right_alt || '',
           right_icon: quote?.right_icon || '',
           name: `${base?.left_alt}/${quote?.right_alt}`,
           left_name: base?.left_name || '',
@@ -179,25 +181,28 @@ export async function getAllPools(): Promise<Pool[]> {
         },
         {
           type: 'defiplaza',
-          pool_type: 'double',
+          pool_type: 'single',
           component: d.address,
-          tvl:  d.tvlUSD,
-          bonus_24h: (quote?.alr_24h || 0) * 100,
-          bonus_7d: (quote?.alr_7d || 0) * 100,
+          tvl: d.tvlUSD,
+          bonus_24h: (base?.single.alr_24h || 0) * 10,
+          bonus_7d: (base?.single.alr_7d || 0) * 10,
           base: d.baseToken,
           quote: d.quoteToken,
-          volume_7d: quote?.volume_7d || 0,
-          volume_24h: quote?.volume_24h || 0,
+          volume_7d: base?.volume_7d || 0,
+          volume_24h: base?.volume_24h || 0,
           bonus_name: 'ALR',
-          left_alt: base?.left_alt || '',
-          right_alt: quote?.right_alt || '',
-          left_icon: base?.left_icon || '',
-          right_icon: quote?.right_icon || '',
-          name: `${base?.left_alt}/${quote?.right_alt}`,
+          ...(base?.single.side === 'base' && {
+            left_alt: base?.left_alt || '',
+            left_icon: base?.left_icon || '',
+          }),
+          ...(base?.single.side === 'quote' && {
+            right_alt: quote?.right_alt || '',
+            right_icon: quote?.right_icon || '',
+          }),
+          name: `${base?.left_alt}/${quote?.right_alt} (${base?.single.side === 'base' ? base?.left_alt || '' : quote?.right_alt || ''})`,
           left_name: base?.left_name || '',
           right_name: quote?.right_name || '',
-        },
-
+        } as Pool,
       ])
     });
   }).flatMap(arr => arr))).flatMap(arr => arr);
