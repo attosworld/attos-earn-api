@@ -31,6 +31,7 @@ export interface Pool {
   name: string;
   left_name: string;
   right_name: string;
+  deposit_link: string;
 }
 
 export interface TokenMetadata {
@@ -93,6 +94,7 @@ export async function getAllPools(): Promise<Pool[]> {
       name: `${o.x.token.symbol}/${o.y.token.symbol}`,
       left_name: o.x.token.name,
       right_name: o.y.token.name,
+      deposit_link: `https://ociswap.com/pools/${o.address}`,
     })
   });
 
@@ -178,6 +180,7 @@ export async function getAllPools(): Promise<Pool[]> {
           name: `${base?.left_alt}/${quote?.right_alt}`,
           left_name: base?.left_name || '',
           right_name: quote?.right_name || '',
+          deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base'? 'quote' : 'base'}`,
         },
         {
           type: 'defiplaza',
@@ -202,6 +205,7 @@ export async function getAllPools(): Promise<Pool[]> {
           name: `${base?.left_alt}/${quote?.right_alt} (${base?.single.side === 'base' ? base?.left_alt || '' : quote?.right_alt || ''})`,
           left_name: base?.left_name || '',
           right_name: quote?.right_name || '',
+          deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base'? 'quote' : 'base'}`,
         } as Pool,
       ])
     });
