@@ -47,7 +47,7 @@ export async function getAccountLPPortfolio(address: string) {
     const lps: Record<string, { type: 'defiplaza' | 'ociswap' | 'ociswap_v2'; balance?: string; nftInfo?: { nfts: NftInfo[]; component: string; left_token: string; right_token: string; }; }> = {};
 
     fungibleLps.forEach(token => {
-        if (token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Quote/)) {
+        if (token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Quote/) || token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Base/)) {
             lps[token.resourceInfo.resourceAddress] = { type: 'defiplaza', balance: token.balance };
         } else if (token.resourceInfo.metadata.name?.startsWith('Ociswap LP')) {
             lps[token.resourceInfo.resourceAddress] = { type: 'ociswap', balance: token.balance };
@@ -69,12 +69,8 @@ export async function getAccountLPPortfolio(address: string) {
 
     const [tokenPrices, liquidityPoolTxs] = await Promise.all([tokensRequest(), getAllAddLiquidityTxs(address)]);
 
-    const addedPoolTxs = liquidityPoolTxs.added.filter(
-        tx => tx.balance_changes?.fungible_balance_changes.find(fb => fb.resource_address in lps)
-            || tx.balance_changes?.non_fungible_balance_changes.find(nfb => nfb.resource_address in lps)
-    ).map(tx => tx.balance_changes as TransactionBalanceChanges);
-
-    const removedPoolTxs = liquidityPoolTxs.removed.map(tx => tx.balance_changes as TransactionBalanceChanges);
+    // Combine and sort all transactions chronologically
+    const allPoolTxs = liquidityPoolTxs;
 
     const portfolioPnL: PoolPortfolioItem[] = (await Promise.all(Object.entries(lps).map(async ([lpAddress, lpInfo]) => {
         let investedAmount = new Decimal(0);
@@ -107,6 +103,7 @@ export async function getAccountLPPortfolio(address: string) {
         if (isDefiplazaLPInfo(underlyingTokens)) {
             const baseValue = new Decimal(underlyingTokens.baseAmount).times(tokenPrices[underlyingTokens.baseToken].tokenPriceUSD);
             const quoteValue = new Decimal(underlyingTokens.quoteAmount).times(tokenPrices[underlyingTokens.quoteToken].tokenPriceUSD);
+
             currentValue = baseValue.plus(quoteValue);
         } else if (isOciswapLPInfo(underlyingTokens)) {
             const xValue = new Decimal(underlyingTokens.x_amount.token).times(tokenPrices[underlyingTokens.x_address].tokenPriceUSD);
@@ -122,47 +119,24 @@ export async function getAccountLPPortfolio(address: string) {
             console.error('Unsupported LP type:', underlyingTokens);
         }
 
-        // Calculate invested amount based on transactions
-        addedPoolTxs.forEach(tx => {
-            const fungibleChange = tx.fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
+        // Calculate invested amount based on all transactions in chronological order
+        allPoolTxs.forEach(tx => {
+            const fungibleChange = tx.balance_changes?.fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
+            const nonFungibleChange = tx.balance_changes?.non_fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
 
-            if (fungibleChange) {
-                const investedTokens = tx.fungible_balance_changes.filter(bc => bc.entity_address.startsWith('account_rdx') && +bc.balance_change < 0);
+            if (fungibleChange || nonFungibleChange) {
+                const relevantTokenChanges = tx.balance_changes?.fungible_balance_changes.filter(bc => 
+                    bc.entity_address.startsWith('account_rdx') && bc.resource_address !== lpAddress
+                );
 
-                investedTokens.forEach(it => {
-                    investedAmount = investedAmount.plus(new Decimal(Math.abs(+it.balance_change)).times(tokenPrices[it.resource_address].tokenPriceUSD));
-                });
-            }
-
-            const nonFungibleChange = tx.non_fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
-
-            if (nonFungibleChange) {
-                const investedTokens = tx.fungible_balance_changes.filter(bc => bc.entity_address.startsWith('account_rdx') && +bc.balance_change < 0);
-
-                investedTokens.forEach(it => {
-                    investedAmount = investedAmount.plus(new Decimal(Math.abs(+it.balance_change)).times(tokenPrices[it.resource_address].tokenPriceUSD));
-                });
-            }
-        });
-
-        // calculate removed liquidity
-        removedPoolTxs.forEach(tx => {
-            const fungibleChange = tx.fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
-
-            if (fungibleChange) {
-                const investedTokens = tx.fungible_balance_changes.filter(bc => bc.entity_address.startsWith('account_rdx') && +bc.balance_change > 0);
-
-                investedTokens.forEach(it => {
-                    investedAmount = investedAmount.minus(new Decimal(Math.abs(+it.balance_change)).times(tokenPrices[it.resource_address].tokenPriceUSD));
-                });
-            }
-
-            const nonFungibleChange = tx.non_fungible_balance_changes.find(fb => fb.resource_address === lpAddress);
-            if (nonFungibleChange) {
-                const investedTokens = tx.fungible_balance_changes.filter(bc => bc.entity_address.startsWith('account_rdx') && +bc.balance_change > 0);
-
-                investedTokens.forEach(it => {
-                    investedAmount = investedAmount.minus(new Decimal(Math.abs(+it.balance_change)).times(tokenPrices[it.resource_address].tokenPriceUSD));
+                relevantTokenChanges?.forEach(it => {
+                    if (+it.balance_change < 0) {
+                        // Adding liquidity
+                        investedAmount = investedAmount.plus(new Decimal(Math.abs(+it.balance_change)).times(tokenPrices[it.resource_address].tokenPriceUSD));
+                    } else {
+                        // Removing liquidity
+                        investedAmount = investedAmount.minus(new Decimal(+it.balance_change).times(tokenPrices[it.resource_address].tokenPriceUSD));
+                    }
                 });
             }
         });

@@ -179,7 +179,7 @@ export async function getAllPools(): Promise<Pool[]> {
                     name: `${base?.left_alt}/${quote?.right_alt} (${base?.single.side === 'base' ? base?.left_alt || '' : quote?.right_alt || ''})`,
                     left_name: base?.left_name || '',
                     right_name: quote?.right_name || '',
-                    deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
+                    deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side}`,
                     boosted: !!BOOSTED_POOLS[d.address],
                     ...(BOOSTED_POOLS[d.address] && {
                         incentivised_lp_docs: BOOSTED_POOLS[d.address].docs
