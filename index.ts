@@ -32,6 +32,8 @@ export interface Pool {
   left_name: string;
   right_name: string;
   deposit_link: string;
+  boosted: boolean;
+  incentivised_lp_docs: string;
 }
 
 export interface TokenMetadata {
@@ -55,10 +57,34 @@ const getTokenMetadata = async (tokenAddress: string): Promise<TokenMetadata>  =
 }
 
 const tokenInfo: Record<string, TokenMetadata> = {
-  'resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq': await getTokenMetadata('resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq')
+  'resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq': await getTokenMetadata('resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq'),
 };
 
 export const PAIR_NAME_CACHE: Record<string, { name: string; left_alt: string; left_icon: string; right_alt: string; right_icon: string; provider: string; }> = {};
+
+const BOOSTED_POOLS: Record<string, { docs: string; }> = {
+  'component_rdx1cqvxkaazmpnvg3f9ufc5n2msv6x7ztjdusdm06lhtf5n7wr8guggg5': {
+    docs: 'https://docs.astrolescent.com/astrolescent-docs/tokens/rewards/providing-liquidity'
+  },
+  'component_rdx1cz9akawaf6d2qefds33c5py9w3fjpgp2qnaddtlcxm06m060wl2j68': {
+    docs: 'https://docs.ilikeitstable.com/ilis-dao/using-ilis-dao/incentives'
+  },
+  'component_rdx1cr9tj8xd5cjs9mzkqdnamrzq0xgy4eylk75vhqqzka5uxsxatv4wxd': {
+    docs: 'https://docs.ilikeitstable.com/ilis-dao/using-ilis-dao/incentives'
+  },
+  'component_rdx1cp4t3jju9rv7dpeeqr3nh3wle0cezjc0k34k6hxd8rtzqzanhmsv5f': {
+    docs: 'https://wowoproject.com/wowo-bank/'
+  },
+  'component_rdx1cpzydtpn2pvq5xp584mk5hz0nakq4dr5e6xv8mwhpuzd4flu6t2jv5': {
+    docs: 'https://wowoproject.com/wowo-bank/'
+  },
+  'component_rdx1cp6fus3tmgfddxvfksn9ng8nh7rd0zqyarl3pgvatzfcwdzuq4nvst': {
+    docs: 'https://wowoproject.com/wowo-bank/'
+  },
+  'component_rdx1cz5jtknztc26heh2w0kmrx25h0k7zlhrthrnxum5yq6jvlgal46n2g': {
+    docs: 'https://wowoproject.com/wowo-bank/'
+  }
+}
 
 export async function getAllPools(): Promise<Pool[]> {
   const ociPools = await getOciswapPools();
@@ -95,6 +121,10 @@ export async function getAllPools(): Promise<Pool[]> {
       left_name: o.x.token.name,
       right_name: o.y.token.name,
       deposit_link: `https://ociswap.com/pools/${o.address}`,
+      boosted: !!BOOSTED_POOLS[o.address],
+      ...(BOOSTED_POOLS[o.address] && {
+        incentivised_lp_docs: BOOSTED_POOLS[o.address].docs
+      })
     })
   });
 
@@ -181,6 +211,10 @@ export async function getAllPools(): Promise<Pool[]> {
           left_name: base?.left_name || '',
           right_name: quote?.right_name || '',
           deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base'? 'quote' : 'base'}`,
+          boosted: !!BOOSTED_POOLS[d.address],
+          ...(BOOSTED_POOLS[d.address] && {
+            incentivised_lp_docs: BOOSTED_POOLS[d.address].docs
+          }),
         },
         {
           type: 'defiplaza',
@@ -206,6 +240,10 @@ export async function getAllPools(): Promise<Pool[]> {
           left_name: base?.left_name || '',
           right_name: quote?.right_name || '',
           deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base'? 'quote' : 'base'}`,
+          boosted: !!BOOSTED_POOLS[d.address],
+          ...(BOOSTED_POOLS[d.address] && {
+            incentivised_lp_docs: BOOSTED_POOLS[d.address].docs
+          }),
         } as Pool,
       ])
     });
@@ -440,7 +478,7 @@ Bun.serve({
             invested: investedAmount.toFixed(),
             currentValue: currentValue.toFixed(),
             pnl: pnlAmount.toFixed(),
-            pnlPercentage: pnlPercent
+            pnlPercentage: pnlPercent,
           };
       }))).filter((pool) => pool && (+pool.invested || 0) > 1) as PoolPortfolioItem[];
 
