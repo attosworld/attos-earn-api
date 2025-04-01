@@ -115,8 +115,8 @@ export async function getVolumeAndTokenMetadata(basePair: string) {
       const singleSide = data.pairState.shortage === 'QuoteShortage' ? 'base' : 'quote';
 
       return ({
-        alr_24h: data.pair.baseAPY + data.pair.quoteAPY,
-        alr_7d: data.pair.baseAPY7D + data.pair.quoteAPY7D,
+        alr_24h: (data.pair.baseAPY + data.pair.quoteAPY) * 100,
+        alr_7d: (data.pair.baseAPY7D + data.pair.quoteAPY7D) * 100,
         tvl_usd: data.pair.tvlUSD,
         volume_24h: data.stats[0].volumeUSD,
         volume_7d: data.stats.slice(0, 6).reduce((acc, curr) => acc + curr.volumeUSD, 0),

@@ -1,5 +1,5 @@
 import { GatewayEzMode } from "@calamari-radix/gateway-ez-mode";
-import { getAllPools, Pool } from "./getAllPools";
+import { getAllPools, type Pool } from "./getAllPools";
 import { getAccountLPPortfolio, type PoolPortfolioItem } from "./getAccountLPPortfolio";
 import { getTokenMetadata, type TokenMetadata } from "./getTokenMetadata";
 
