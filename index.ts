@@ -34,6 +34,12 @@ export const BOOSTED_POOLS: Record<string, { docs: string; }> = {
   },
   'component_rdx1cz5jtknztc26heh2w0kmrx25h0k7zlhrthrnxum5yq6jvlgal46n2g': {
     docs: 'https://wowoproject.com/wowo-bank/'
+  },
+  'component_rdx1cr9kzxefdnadsrmajswvenf803fgw8j4h8jlcse4z3m2t3q384xdup': {
+    docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning'
+  },
+  'component_rdx1cr8hdtxhz7k6se6pgyrqa66sdlc06kjchfzjcl6pl2er8ratyfyre8': {
+    docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning'
   }
 }
 
