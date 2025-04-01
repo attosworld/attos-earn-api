@@ -32,7 +32,7 @@ export async function getAllPools(): Promise<Pool[]> {
 
     if (!ociPools || !dfpPools) return [];
 
-    const remappedOciswapPools = ociPools.data.map(o => {
+    const remappedOciswapPools = ociPools.map(o => {
         PAIR_NAME_CACHE[o.lp_token_address] = {
             provider: 'Ociswap',
             name: `${o.x.token.symbol}/${o.y.token.symbol}`,

@@ -90,12 +90,22 @@ export interface OciswapPool {
   y: TokenData;
 }
 
-export async function ociswapPools() {
+export async function ociswapPools(items: OciswapPool[] = [], cursor?: string) {
   const options = {method: 'GET', headers: {accept: 'application/json'}};
 
-return fetch('https://api.ociswap.com/pools?cursor=0&limit=100&order=rank&direction=asc', options)
-  .then(res => res.json() as Promise<{ data: OciswapPool[] }>)
+  const response = await fetch(`https://api.ociswap.com/pools?cursor=${cursor || 0}&limit=100&order=rank&direction=asc`, options)
+  .then(res => res.json() as Promise<{ data: OciswapPool[], next_cursor: string}>)
   .catch(err => console.error(err));
+
+  if (response?.next_cursor) {
+    return ociswapPools([...items, ...response.data], response.next_cursor);
+  }
+
+  if (response) {
+    return [...items,...(response as { data: OciswapPool[] }).data];
+  }
+
+  return items;
 }
 
 

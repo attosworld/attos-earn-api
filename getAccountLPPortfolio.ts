@@ -101,18 +101,18 @@ export async function getAccountLPPortfolio(address: string) {
 
         // Calculate current value based on underlying tokens
         if (isDefiplazaLPInfo(underlyingTokens)) {
-            const baseValue = new Decimal(underlyingTokens.baseAmount).times(tokenPrices[underlyingTokens.baseToken].tokenPriceUSD);
-            const quoteValue = new Decimal(underlyingTokens.quoteAmount).times(tokenPrices[underlyingTokens.quoteToken].tokenPriceUSD);
+            const baseValue = new Decimal(underlyingTokens.baseAmount).times(tokenPrices[underlyingTokens.baseToken]?.tokenPriceUSD || 0);
+            const quoteValue = new Decimal(underlyingTokens.quoteAmount).times(tokenPrices[underlyingTokens.quoteToken]?.tokenPriceUSD || 0);
 
             currentValue = baseValue.plus(quoteValue);
         } else if (isOciswapLPInfo(underlyingTokens)) {
-            const xValue = new Decimal(underlyingTokens.x_amount.token).times(tokenPrices[underlyingTokens.x_address].tokenPriceUSD);
-            const yValue = new Decimal(underlyingTokens.y_amount.token).times(tokenPrices[underlyingTokens.y_address].tokenPriceUSD);
+            const xValue = new Decimal(underlyingTokens.x_amount.token).times(tokenPrices[underlyingTokens.x_address]?.tokenPriceUSD || 0);
+            const yValue = new Decimal(underlyingTokens.y_amount.token).times(tokenPrices[underlyingTokens.y_address]?.tokenPriceUSD || 0);
             currentValue = xValue.plus(yValue);
         } else if (isOciswapV2LPInfo(underlyingTokens)) {
             underlyingTokens.forEach(lp => {
-                const xValue = new Decimal(lp.x_amount.token).times(tokenPrices[lp.left_token].tokenPriceUSD);
-                const yValue = new Decimal(lp.y_amount.token).times(tokenPrices[lp.right_token].tokenPriceUSD);
+                const xValue = new Decimal(lp.x_amount.token).times(tokenPrices[lp.left_token]?.tokenPriceUSD || 0);
+                const yValue = new Decimal(lp.y_amount.token).times(tokenPrices[lp.right_token]?.tokenPriceUSD || 0);
                 currentValue = currentValue.plus(xValue.plus(yValue));
             });
         } else {
