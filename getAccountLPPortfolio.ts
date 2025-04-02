@@ -147,6 +147,8 @@ export async function getAccountLPPortfolio(address: string) {
 
     const strategyTxs = liquidityPoolTxs.filter(tx => tx.strategy);
 
+    console.log(strategyTxs);
+
     // Combine and sort all transactions chronologically
     const allPoolTxs = liquidityPoolTxs;
 

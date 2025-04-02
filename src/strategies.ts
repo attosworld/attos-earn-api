@@ -245,8 +245,7 @@ CALL_METHOD
           getRootMarketStats(),
         ]);
 
-        const borrowUsdcLimit = (1 - +stats.assets.radix.LTVLimit);
-        console.log("Borrow USD limit:", borrowUsdcLimit);
+        const borrowUsdcLimit = (1 - +stats.assets.radix.LTVLimit) + 0.10;
 
         const xrdToUsd = ((marketPrices?.assetPrice || 0) * +xrdAmount);
 
