@@ -16,6 +16,10 @@ export interface Strategy {
     token: string;
     apy: number;
   }[];
+  dappsUtilized: {
+    icon: string;
+    label: string;
+  }[];
 }
 
 export interface AssetPrice {
@@ -151,28 +155,28 @@ export const STRATEGY_MANIFEST = {
   1: {
     manifest:
 `CALL_METHOD
+Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
+"charge_royalty"
+;
+CALL_METHOD
   Address("{account}")
   "withdraw"
   Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
   Decimal("{xrdAmount}")
 ;
-
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
   Bucket("bucket_0")
 ;
-
 CALL_METHOD
   Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
   "contribute"
   Bucket("bucket_0")
 ;
-
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1t5ey8s5nq99p5ae7jxp4ez5xljn7gtjgesr0dartq9aeys2tfwqg9w")
   Bucket("bucket_1")
 ;
-
 CALL_METHOD
   Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
   "create_cdp"
@@ -183,17 +187,14 @@ CALL_METHOD
     Bucket("bucket_1")
   )
 ;
-
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
   Bucket("nft")
 ;
-
 CREATE_PROOF_FROM_BUCKET_OF_ALL
   Bucket("nft")
   Proof("nft_proof")
 ;
-
 CALL_METHOD
   Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
   "borrow"
@@ -205,7 +206,6 @@ CALL_METHOD
     )
   )
 ;
-
 CALL_METHOD
   Address("{account}")
   "deposit_batch"
@@ -213,29 +213,24 @@ CALL_METHOD
     Bucket("nft")
   )
 ;
-
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
   Bucket("usdc")
 ;
-
 CALL_METHOD
   Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
   "wrap"
   Bucket("usdc")
 ;
-
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
   Bucket("susdc")
 ;
-
 CALL_METHOD
   Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
   "add_liquidity"
   Bucket("susdc")
 ;
-
 CALL_METHOD
   Address("{account}")
   "deposit_batch"
@@ -250,7 +245,7 @@ CALL_METHOD
           getRootMarketStats(),
         ]);
 
-        const borrowUsdcLimit = +stats.assets.radix.optimalUsage - 5;
+        const borrowUsdcLimit = 1 - +stats.assets.radix.LTVLimit;
 
         const xrdToUsd = ((marketPrices?.assetPrice || 0) * +xrdAmount);
 
@@ -300,6 +295,10 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
         { token: "XRD", apy: xrdLendingApy },
         { token: "xUSDC", apy: surgeLpApy }
       ],
+      dappsUtilized: [
+        { icon: 'https://app.rootfinance.xyz/favicon.ico', label: 'RootFinance'  },
+        { icon: 'https://surge.trade/images/icon_dapp.png', label: 'Surge'  },
+      ]
     };
   } catch (error) {
     console.error("Error in getRootFinanceLendXrdBorrowUsdProvideSurgeLP:", error);
