@@ -2,6 +2,7 @@ import { GatewayEzMode } from "@calamari-radix/gateway-ez-mode";
 import { getAllPools, type Pool } from "./getAllPools";
 import { getAccountLPPortfolio, type PoolPortfolioItem } from "./getAccountLPPortfolio";
 import { getTokenMetadata, type TokenMetadata } from "./getTokenMetadata";
+import { getExecuteStrategyManifest, getStrategies } from "./src/strategies";
 
 export const gatewayApiEzMode = new GatewayEzMode();
 
@@ -39,6 +40,9 @@ export const BOOSTED_POOLS: Record<string, { docs: string; }> = {
     docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning'
   },
   'component_rdx1cr8hdtxhz7k6se6pgyrqa66sdlc06kjchfzjcl6pl2er8ratyfyre8': {
+    docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning'
+  },
+  'component_rdx1cz5fuzruncczpsz6kksz7zjvg3u4a94ll97ua868357vhzme490ymt': {
     docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning'
   }
 }
@@ -98,10 +102,44 @@ Bun.serve({
       });
     }
 
-      return new Response(null, {
-        status: 404,
-        headers: corsHeaders,
+    if (url.pathname === "/strategies") {
+      return new Response(JSON.stringify(await getStrategies()), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
+    }
+
+    if (url.pathname === "/strategies/execute") {
+      const strategyId = url.searchParams.get("id");
+      const accountAddress = url.searchParams.get("account");
+      const xrdAmount = url.searchParams.get("xrd_amount");
+
+      if (!strategyId) {
+        return new Response(JSON.stringify({ error_codes: ['strategy_name_invalid_or_required'] }), {
+          headers: { "Content-Type": "application/json",...corsHeaders },
+        });
+      }
+
+      if (!accountAddress || !accountAddress.startsWith('account_rdx')) {
+        return new Response(JSON.stringify({ error_codes: ['address_invalid_or_required']}), {
+          headers: { "Content-Type": "application/json",...corsHeaders },
+        });
+      }
+
+      if (!xrdAmount || isNaN(Number(xrdAmount))) {
+        return new Response(JSON.stringify({ error_codes: ['xrd_amount_invalid_or_required'] }), {
+          headers: { "Content-Type": "application/json",...corsHeaders },
+        });
+      }
+
+      return  new Response(JSON.stringify(await getExecuteStrategyManifest(strategyId, xrdAmount, accountAddress)), {
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    return new Response(null, {
+      status: 404,
+      headers: corsHeaders,
+    });
   },
 });
 
