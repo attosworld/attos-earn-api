@@ -245,7 +245,8 @@ CALL_METHOD
           getRootMarketStats(),
         ]);
 
-        const borrowUsdcLimit = 1 - +stats.assets.radix.LTVLimit;
+        const borrowUsdcLimit = (1 - +stats.assets.radix.LTVLimit);
+        console.log("Borrow USD limit:", borrowUsdcLimit);
 
         const xrdToUsd = ((marketPrices?.assetPrice || 0) * +xrdAmount);
 
@@ -263,10 +264,6 @@ CALL_METHOD
 async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy | null> {
   try {
     const [stats, surgeStats] = await Promise.all([
-      // getRootMarketPrices()
-      //   .then(
-      //     data => data.prices.find(price => price.assetName === "resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
-      //   ),
       getRootMarketStats(),
       getSurgeStats()
     ]);
