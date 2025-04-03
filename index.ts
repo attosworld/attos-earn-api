@@ -135,6 +135,7 @@ Bun.serve({
             const strategyId = url.searchParams.get('id')
             const accountAddress = url.searchParams.get('account')
             const xrdAmount = url.searchParams.get('xrd_amount')
+            const ltv = url.searchParams.get('ltv')
 
             if (!strategyId) {
                 return new Response(
@@ -178,12 +179,27 @@ Bun.serve({
                 )
             }
 
+            if (ltv && isNaN(Number(ltv)) && +ltv > 60) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['ltv_invalid_or_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
             return new Response(
                 JSON.stringify(
                     await getExecuteStrategyManifest(
                         strategyId,
                         xrdAmount,
-                        accountAddress
+                        accountAddress,
+                        ltv ? +ltv / 100 : undefined
                     )
                 ),
                 {

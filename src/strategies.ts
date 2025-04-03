@@ -20,6 +20,7 @@ export interface Strategy {
         icon: string
         label: string
     }[]
+    fieldsRequired: { fieldName: string; type: string }[]
 }
 
 export interface AssetPrice {
@@ -239,7 +240,8 @@ CALL_METHOD
         generateManifest: async (
             manifest: string,
             account: string,
-            xrdAmount: string
+            xrdAmount: string,
+            ltv: number | undefined
         ) => {
             const [marketPrices, stats] = await Promise.all([
                 getRootMarketPrices().then((data) =>
@@ -252,7 +254,10 @@ CALL_METHOD
                 getRootMarketStats(),
             ])
 
-            const borrowUsdcLimit = 1 - +stats.assets.radix.LTVLimit + 0.1
+            const borrowUsdcLimit =
+                ltv || 1 - +stats.assets.radix.LTVLimit + 0.1
+
+            console.log(borrowUsdcLimit)
 
             const xrdToUsd = (marketPrices?.assetPrice || 0) * +xrdAmount
 
@@ -327,6 +332,7 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
                     label: 'Surge',
                 },
             ],
+            fieldsRequired: [{ fieldName: 'ltv', type: 'slider' }],
         }
     } catch (error) {
         console.error(
@@ -346,7 +352,8 @@ export async function getStrategies() {
 export async function getExecuteStrategyManifest(
     strategyId: string,
     xrd: string,
-    accountAddress: string
+    accountAddress: string,
+    ltv: number | undefined
 ) {
     const strategy =
         STRATEGY_MANIFEST[+strategyId as keyof typeof STRATEGY_MANIFEST]
@@ -355,7 +362,8 @@ export async function getExecuteStrategyManifest(
         manifest: await strategy.generateManifest(
             strategy.manifest,
             accountAddress,
-            xrd.toString()
+            xrd.toString(),
+            ltv
         ),
     }
 }
