@@ -1,21 +1,26 @@
 {
-  "name": "attos-earn-api",
-  "module": "index.ts",
-  "type": "module",
-  "scripts": {
-    "start": "bun run index.ts"
-  },
-  "devDependencies": {
-    "@flydotio/dockerfile": "^0.7.9",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.7.3"
-  },
-  "dependencies": {
-    "@calamari-radix/gateway-ez-mode": "^1.6.2",
-    "@calamari-radix/sbor-ez-mode": "^1.2.1",
-    "@radixdlt/babylon-gateway-api-sdk": "^1.10.1",
-    "decimal.js": "^10.5.0"
-  }
+    "name": "attos-earn-api",
+    "module": "index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "bun run index.ts",
+        "format": "prettier . --write"
+    },
+    "devDependencies": {
+        "@flydotio/dockerfile": "^0.7.9",
+        "@types/bun": "latest",
+        "eslint-config-prettier": "^10.1.1"
+    },
+    "peerDependencies": {
+        "typescript": "^5.8.2"
+    },
+    "dependencies": {
+        "@calamari-radix/gateway-ez-mode": "^1.6.2",
+        "@calamari-radix/sbor-ez-mode": "^1.2.1",
+        "@eslint/js": "^9.23.0",
+        "@radixdlt/babylon-gateway-api-sdk": "^1.10.1",
+        "decimal.js": "^10.5.0",
+        "eslint": "^9.23.0",
+        "typescript-eslint": "^8.29.0"
+    }
 }
