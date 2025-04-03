@@ -57,9 +57,6 @@ export interface RootMarketStats {
             totalBorrow: { amount: string; value: number }
             lendingAPY: number
             borrowAPY: number
-            depositLimit: any[]
-            borrowLimit: any[]
-            utilizationLimit: any[]
             optimalUsage: string
             LTVLimit: string
         }

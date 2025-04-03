@@ -35,20 +35,22 @@ export interface PoolPortfolioItem {
     strategy?: boolean
 }
 
-export function isDefiplazaLPInfo(info: any): info is DefiPlazaLPInfo {
+export function isDefiplazaLPInfo(
+    info: UnderlyingTokens
+): info is DefiPlazaLPInfo {
     return 'baseToken' in info && 'quoteToken' in info
 }
 
-export function isOciswapLPInfo(info: any): info is OciswapLPInfo {
+export function isOciswapLPInfo(info: UnderlyingTokens): info is OciswapLPInfo {
     return 'x_address' in info && 'y_address' in info
 }
 
 export function isOciswapV2LPInfo(
-    info: any
+    info: UnderlyingTokens
 ): info is (OciswapLPInfo & { left_token: string; right_token: string })[] {
     return (
-        info.length &&
-        info.every((lp: any) => 'x_amount' in lp && 'y_amount' in lp)
+        info instanceof Array &&
+        info.every((lp) => 'x_amount' in lp && 'y_amount' in lp)
     )
 }
 
@@ -198,7 +200,7 @@ async function getAssetOutStrategyValue(
         const value = (
             preview.resource_changes.find((rc) =>
                 (
-                    rc as { index: number; resource_changes: any[] }
+                    rc as { index: number; resource_changes: ResourceChange[] }
                 ).resource_changes.find((rc) => +rc.amount > 0)
             ) as { resource_changes: ResourceChange[] }
         ).resource_changes[0]
@@ -250,7 +252,19 @@ export function astrolescentRequest(
     })
 }
 
-async function getLPInfo(lpAddress: string, lpInfo: any) {
+async function getLPInfo(
+    lpAddress: string,
+    lpInfo: {
+        type: 'defiplaza' | 'ociswap' | 'ociswap_v2'
+        balance?: string
+        nftInfo?: {
+            nfts: NftInfo[]
+            component: string
+            left_token: string
+            right_token: string
+        }
+    }
+) {
     if (lpInfo.type === 'defiplaza' && lpInfo.balance) {
         return await defiplazaLpInfo(lpAddress, lpInfo.balance)
     } else if (lpInfo.type === 'ociswap' && lpInfo.balance) {
@@ -262,14 +276,14 @@ async function getLPInfo(lpAddress: string, lpInfo: any) {
                     .getWithSchema(OciswapV2Nft)
                     ._unsafeUnwrap()
                 return getOciswapLpInfo(
-                    lpInfo.nftInfo.component,
+                    lpInfo.nftInfo!.component,
                     nft.liquidity,
                     nft.left_bound,
                     nft.right_bound
                 ).then((res) => ({
                     ...res,
-                    left_token: lpInfo.nftInfo.left_token,
-                    right_token: lpInfo.nftInfo.right_token,
+                    left_token: lpInfo.nftInfo!.left_token,
+                    right_token: lpInfo.nftInfo!.right_token,
                 }))
             })
         )
@@ -277,8 +291,29 @@ async function getLPInfo(lpAddress: string, lpInfo: any) {
     return null
 }
 
+export type UnderlyingTokens =
+    | OciswapLPInfo
+    | DefiPlazaLPInfo
+    | {
+          left_token: string
+          right_token: string
+          x_address: string
+          y_address: string
+          x_amount: {
+              token: string
+              xrd: string
+              usd: string
+          }
+          y_amount: {
+              token: string
+              xrd: string
+              usd: string
+          }
+          liquidity_amount: string
+      }[]
+
 function calculateCurrentValue(
-    underlyingTokens: any,
+    underlyingTokens: UnderlyingTokens,
     tokenPrices: Record<string, TokenInfo>
 ) {
     let currentValue = new Decimal(0)
@@ -299,7 +334,7 @@ function calculateCurrentValue(
         )
         currentValue = xValue.plus(yValue)
     } else if (isOciswapV2LPInfo(underlyingTokens)) {
-        underlyingTokens.forEach((lp: any) => {
+        underlyingTokens.forEach((lp) => {
             const xValue = new Decimal(lp.x_amount.token).times(
                 tokenPrices[lp.left_token]?.tokenPriceUSD || 0
             )
@@ -395,9 +430,9 @@ async function processStrategyTransaction(
         const data = nft[0].data?.programmatic_json
         if (data?.kind === 'Tuple') {
             const collaterals = data.fields.find(
-                (f: any) => f.field_name === 'collaterals'
+                (f) => f.field_name === 'collaterals'
             )
-            const loans = data.fields.find((f: any) => f.field_name === 'loans')
+            const loans = data.fields.find((f) => f.field_name === 'loans')
             if (
                 collaterals &&
                 'entries' in collaterals &&

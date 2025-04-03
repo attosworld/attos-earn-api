@@ -146,12 +146,10 @@ export async function getOciswapLpInfo(
 
     const lpInfo = await fetch(
         `https://api.ociswap.com/preview/remove-liquidity?pool_address=${lpPoolComponent}&liquidity_amount=${amount}${bounds}`
-    )
-        .then((response) => response.json() as Promise<OciswapLPInfo>)
-        .catch(() => null)
+    ).then((response) => response.json() as Promise<OciswapLPInfo>)
 
     if (lpInfo && 'error' in lpInfo) {
-        return null
+        throw new Error(`Error fetching Ociswap LP info: ${lpInfo.error}`)
     }
 
     return lpInfo

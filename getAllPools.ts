@@ -1,6 +1,10 @@
 import { PAIR_NAME_CACHE, BOOSTED_POOLS, TOKEN_INFO } from '.'
 import { getTokenMetadata } from './getTokenMetadata'
-import { getDefiplazaPools, getVolumeAndTokenMetadata } from './src/defiplaza'
+import {
+    getDefiplazaPools,
+    getVolumeAndTokenMetadata,
+    type VolumeAndTokenMetadata,
+} from './src/defiplaza'
 import { ociswapPools as getOciswapPools } from './src/ociswap'
 
 export interface Pool {
@@ -77,7 +81,7 @@ export async function getAllPools(): Promise<Pool[]> {
                         getVolumeAndTokenMetadata(d.quoteToken),
                     ]).then(async ([base, quote]) => {
                         if (!quote && TOKEN_INFO[d.quoteToken]) {
-                            quote = {} as any
+                            quote = {} as VolumeAndTokenMetadata
 
                             if (quote) {
                                 quote.right_alt =
@@ -89,7 +93,8 @@ export async function getAllPools(): Promise<Pool[]> {
                             TOKEN_INFO[d.quoteToken] = await getTokenMetadata(
                                 d.quoteToken
                             )
-                            quote = {} as any
+                            quote = {} as VolumeAndTokenMetadata
+
                             if (quote) {
                                 quote.right_alt =
                                     TOKEN_INFO[d.quoteToken].symbol

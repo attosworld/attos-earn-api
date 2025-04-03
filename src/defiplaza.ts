@@ -105,7 +105,34 @@ export interface DefiplazaPairAnalytics {
     pairState: PairState
 }
 
-export async function getVolumeAndTokenMetadata(basePair: string) {
+export interface VolumeAndTokenMetadata {
+    alr_24h: number
+    alr_7d: number
+    tvl_usd: number
+    volume_24h: number
+    volume_7d: number
+    left_alt: string
+    right_alt: string
+    left_icon: string
+    right_icon: string
+    left_name: string
+    right_name: string
+    baseLPToken: string
+    quoteLPToken: string
+    pairState: PairState
+    single: {
+        side: 'base' | 'quote'
+        alr_24h: number
+        alr_7d: number
+        tvl_usd: number
+        volume_24h: number
+        volume_7d: number
+    }
+}
+
+export async function getVolumeAndTokenMetadata(
+    basePair: string
+): Promise<VolumeAndTokenMetadata | null> {
     return fetch(`https://radix.defiplaza.net/api/analytics/pair/${basePair}`, {
         method: 'GET',
         headers: { accept: 'application/json' },
@@ -165,7 +192,7 @@ export async function getVolumeAndTokenMetadata(basePair: string) {
                                       0
                                   ),
                 },
-            }
+            } as VolumeAndTokenMetadata
         })
         .catch(() => null)
 }

@@ -13,7 +13,6 @@ export interface TokenInfo {
     diff7Days: number
     diff7DaysUSD: number
     totalSupply: number
-    circSupply: any
     icon_url: string
     createdAt: string | null
 }
