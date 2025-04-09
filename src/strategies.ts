@@ -1,5 +1,14 @@
+import { POOLS_CACHE } from '..'
+import {
+    XRD_RESOURCE_ADDRESS,
+    XUSDC_RESOURCE_ADDRESS,
+} from './resourceAddresses'
+import { STRATEGY_MANIFEST } from './strategyManifest'
+
 export interface Strategy {
-    id: number
+    id: string
+    component: string | null
+    buyToken: string | null
     name: string
     description: string
     steps: {
@@ -21,6 +30,10 @@ export interface Strategy {
         label: string
     }[]
     fieldsRequired: { fieldName: string; type: string }[]
+    ltvLimit: string
+    ltvLiquidation: string
+    optimalLtv: string
+    poolType?: string
 }
 
 export interface AssetPrice {
@@ -153,134 +166,11 @@ export async function getSurgeStats(): Promise<SurgeStats> {
     }
 }
 
-export const STRATEGY_MANIFEST = {
-    1: {
-        manifest: `CALL_METHOD
-Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
-"charge_royalty"
-;
-CALL_METHOD
-  Address("{account}")
-  "withdraw"
-  Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
-  Decimal("{xrdAmount}")
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd")
-  Bucket("bucket_0")
-;
-CALL_METHOD
-  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
-  "contribute"
-  Bucket("bucket_0")
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1t5ey8s5nq99p5ae7jxp4ez5xljn7gtjgesr0dartq9aeys2tfwqg9w")
-  Bucket("bucket_1")
-;
-CALL_METHOD
-  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
-  "create_cdp"
-  Enum<0u8>()
-  Enum<0u8>()
-  Enum<0u8>()
-  Array<Bucket>(
-    Bucket("bucket_1")
-  )
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
-  Bucket("nft")
-;
-CREATE_PROOF_FROM_BUCKET_OF_ALL
-  Bucket("nft")
-  Proof("nft_proof")
-;
-CALL_METHOD
-  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
-  "borrow"
-  Proof("nft_proof")
-  Array<Tuple>(
-    Tuple(
-      Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf"),
-      Decimal("{borrowUsdAmount}")
-    )
-  )
-;
-CALL_METHOD
-  Address("{account}")
-  "deposit_batch"
-  Array<Bucket>(
-    Bucket("nft")
-  )
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
-  Bucket("usdc")
-;
-CALL_METHOD
-  Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
-  "wrap"
-  Bucket("usdc")
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
-  Bucket("susdc")
-;
-CALL_METHOD
-  Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
-  "add_liquidity"
-  Bucket("susdc")
-;
-CALL_METHOD
-  Address("{account}")
-  "deposit_batch"
-  Expression("ENTIRE_WORKTOP")
-;`,
-        generateManifest: async (
-            manifest: string,
-            account: string,
-            xrdAmount: string,
-            ltv: number | undefined
-        ) => {
-            const [marketPrices, stats] = await Promise.all([
-                getRootMarketPrices().then((data) =>
-                    data.prices.find(
-                        (price) =>
-                            price.assetName ===
-                            'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                    )
-                ),
-                getRootMarketStats(),
-            ])
-
-            const borrowUsdcLimit =
-                ltv || 1 - +stats.assets.radix.LTVLimit + 0.1
-
-            console.log(borrowUsdcLimit)
-
-            const xrdToUsd = (marketPrices?.assetPrice || 0) * +xrdAmount
-
-            const borrowUsdAmount = (
-                xrdToUsd -
-                borrowUsdcLimit * xrdToUsd
-            ).toFixed(18)
-
-            return manifest
-                .replaceAll('{account}', account)
-                .replaceAll('{xrdAmount}', xrdAmount)
-                .replaceAll('{borrowUsdAmount}', borrowUsdAmount)
-                .replaceAll('\n', ' ')
-        },
-    },
-}
-
-async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy | null> {
+async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(
+    stats: RootMarketStats
+): Promise<Strategy | null> {
     try {
-        const [stats, surgeStats] = await Promise.all([
-            getRootMarketStats(),
-            getSurgeStats(),
-        ])
+        const surgeStats = await getSurgeStats()
 
         const surgeLpApy = surgeStats.apy.value * 100 // Convert to percentage
         const xrdLendingApy = stats.assets.radix.lendingAPY
@@ -288,8 +178,10 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
         const estimatedTotalApy = xrdLendingApy + surgeLpApy
 
         return {
-            id: 1,
+            id: 'root-surge',
             name: 'Root Points, Yield Surge LP',
+            component: null,
+            buyToken: null,
             description:
                 'Lend XRD, borrow xUSDC, and provide xUSDC to Surge for optimal returns.',
             steps: [
@@ -308,8 +200,7 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
             ],
             requiredAssets: [
                 {
-                    resource_address:
-                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd',
+                    resource_address: XRD_RESOURCE_ADDRESS,
                     symbol: 'XRD',
                 },
             ],
@@ -333,6 +224,9 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
                 },
             ],
             fieldsRequired: [{ fieldName: 'ltv', type: 'slider' }],
+            ltvLimit: `${+stats.assets.radix.LTVLimit * 100}`,
+            ltvLiquidation: '65',
+            optimalLtv: `${+stats.assets.radix.optimalUsage * 100}`,
         }
     } catch (error) {
         console.error(
@@ -343,27 +237,139 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(): Promise<Strategy 
     }
 }
 
+async function getLPIncentiveStrategies(
+    stats: RootMarketStats
+): Promise<Strategy[]> {
+    try {
+        const pools =
+            POOLS_CACHE?.filter(
+                (p) => p.boosted && p.left_alt && p.right_alt
+            ) || []
+
+        return pools.map((pool) => {
+            const usdLendingApy = stats.assets['usd-coin'].lendingAPY
+
+            const estimatedTotalApy = usdLendingApy + +pool.bonus_7d
+
+            const provider = pool.bonus_name === 'ALR' ? 'Defiplaza' : 'Ociswap'
+
+            const id = `root-${provider.toLowerCase()}-${pool.name.toLowerCase()}`
+
+            STRATEGY_MANIFEST[id] = {
+                manifest: STRATEGY_MANIFEST['xusdc-lp'].manifest,
+                poolProvider: provider,
+                generateManifest:
+                    STRATEGY_MANIFEST['xusdc-lp'].generateManifest,
+            }
+
+            return {
+                id,
+                name: `Root Points, Yield ${pool.left_alt} in ${provider}`,
+                description: `Lend xUSDC, borrow XRD, swap for ${pool.left_alt}, provide LP to ${provider}`,
+                steps: [
+                    {
+                        icon: 'https://assets.instabridge.io/tokens/icons/xUSDC.png',
+                        label: 'Lend xUSDC',
+                    },
+                    {
+                        icon: 'https://assets.radixdlt.com/icons/icon-xrd.png',
+                        label: 'Borrow XRD',
+                    },
+                    {
+                        icon: pool.left_icon,
+                        label: `Swap for ${pool.left_alt}`,
+                    },
+                    {
+                        icon: pool.left_icon,
+                        label: `Add LP to ${pool.name}`,
+                    },
+                ],
+                requiredAssets: [
+                    {
+                        resource_address: XUSDC_RESOURCE_ADDRESS,
+                        symbol: 'xUSDC',
+                    },
+                ],
+                rewardTokens: [pool.left_alt],
+                totalRewards: {
+                    value: estimatedTotalApy,
+                    type: 'APY',
+                },
+                rewardsBreakdown: [
+                    { token: 'xUSDC', apy: usdLendingApy },
+                    { token: pool.name, apy: pool.bonus_7d },
+                ],
+                dappsUtilized: [
+                    {
+                        icon: 'https://app.rootfinance.xyz/favicon.ico',
+                        label: 'RootFinance',
+                    },
+                    {
+                        icon:
+                            provider === 'Ociswap'
+                                ? 'https://ociswap.com/icons/oci.png'
+                                : 'https://static.defiplaza.net/website/uploads/2023/09/25115716/defiplaza-dex-icon-stokenet.png',
+                        label: provider,
+                    },
+                ],
+                fieldsRequired: [{ fieldName: 'ltv', type: 'slider' }],
+                component: pool.component,
+                buyToken: pool.left_token,
+                ltvLimit: `${+stats.assets['usd-coin'].LTVLimit * 100}`,
+                ltvLiquidation: '80',
+                optimalLtv: `${+stats.assets['usd-coin'].optimalUsage * 100}`,
+                poolType: pool.sub_type,
+                currentPrice: pool.current_price,
+                buyingSymbol: pool.left_alt,
+                askPrice: pool.ask_price,
+            } as Strategy
+        })
+    } catch (error) {
+        console.error(
+            'Error in getRootFinanceLendXrdBorrowUsdProvideSurgeLP:',
+            error
+        )
+        throw new Error('Failed to fetch LP incentive strategies')
+    }
+}
+
 export async function getStrategies() {
-    return [await getRootFinanceLendXrdBorrowUsdProvideSurgeLP()].filter(
-        Boolean
-    )
+    const stats = await getRootMarketStats()
+
+    return [
+        await getRootFinanceLendXrdBorrowUsdProvideSurgeLP(stats),
+        ...(await getLPIncentiveStrategies(stats)),
+    ]
+        .filter(Boolean)
+        .sort((a, b) => {
+            return +(b?.totalRewards.value || 0) - (a?.totalRewards.value || 0)
+        })
 }
 
 export async function getExecuteStrategyManifest(
     strategyId: string,
     xrd: string,
     accountAddress: string,
-    ltv: number | undefined
+    ltv: number | undefined,
+    buyToken: string | null,
+    component: string | null,
+    leftPercentage: number | null,
+    rightPercentage: number | null
 ) {
     const strategy =
-        STRATEGY_MANIFEST[+strategyId as keyof typeof STRATEGY_MANIFEST]
+        STRATEGY_MANIFEST[strategyId as keyof typeof STRATEGY_MANIFEST]
 
     return {
         manifest: await strategy.generateManifest(
+            strategyId,
             strategy.manifest,
             accountAddress,
             xrd.toString(),
-            ltv
+            ltv,
+            buyToken,
+            component,
+            leftPercentage,
+            rightPercentage
         ),
     }
 }

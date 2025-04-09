@@ -70,13 +70,13 @@ const corsHeaders = {
 }
 
 // Cache for pools
-let poolsCache: Pool[] | null = null
+export let POOLS_CACHE: Pool[] | null = null
 const CACHE_DURATION = 30000
 
 // Function to update the cache
 async function updatePoolsCache() {
     try {
-        poolsCache = await getAllPools()
+        POOLS_CACHE = await getAllPools()
         console.log('Pools cache updated at', new Date().toISOString())
     } catch (error) {
         console.error('Error updating pools cache:', error)
@@ -85,6 +85,8 @@ async function updatePoolsCache() {
 
 // Initial cache update
 await updatePoolsCache()
+
+await getStrategies()
 
 // Set up background job to update cache every 5 minutes
 setInterval(updatePoolsCache, CACHE_DURATION)
@@ -97,7 +99,7 @@ Bun.serve({
         const url = new URL(req.url)
         if (url.pathname === '/pools') {
             // Always return the cached data, which is updated in the background
-            return new Response(JSON.stringify(poolsCache), {
+            return new Response(JSON.stringify(POOLS_CACHE), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
             })
         }
@@ -134,8 +136,12 @@ Bun.serve({
         if (url.pathname === '/strategies/execute') {
             const strategyId = url.searchParams.get('id')
             const accountAddress = url.searchParams.get('account')
-            const xrdAmount = url.searchParams.get('xrd_amount')
+            const tokenAmount = url.searchParams.get('token_amount')
             const ltv = url.searchParams.get('ltv')
+            const buyToken = url.searchParams.get('buy_token')
+            const component = url.searchParams.get('component')
+            const leftPercentage = url.searchParams.get('min_percentage')
+            const rightPercentage = url.searchParams.get('max_percentage')
 
             if (!strategyId) {
                 return new Response(
@@ -165,10 +171,10 @@ Bun.serve({
                 )
             }
 
-            if (!xrdAmount || isNaN(Number(xrdAmount))) {
+            if (!tokenAmount || isNaN(Number(tokenAmount))) {
                 return new Response(
                     JSON.stringify({
-                        error_codes: ['xrd_amount_invalid_or_required'],
+                        error_codes: ['token_amount_invalid_or_required'],
                     }),
                     {
                         headers: {
@@ -197,9 +203,13 @@ Bun.serve({
                 JSON.stringify(
                     await getExecuteStrategyManifest(
                         strategyId,
-                        xrdAmount,
+                        tokenAmount,
                         accountAddress,
-                        ltv ? +ltv / 100 : undefined
+                        ltv ? +ltv / 100 : undefined,
+                        buyToken,
+                        component,
+                        leftPercentage ? +leftPercentage : null,
+                        rightPercentage ? +rightPercentage : null
                     )
                 ),
                 {

@@ -9,7 +9,9 @@ import { ociswapPools as getOciswapPools } from './src/ociswap'
 
 export interface Pool {
     type: string
+    sub_type: 'double' | 'single' | 'precision' | 'flex' | 'basic'
     component: string
+    current_price?: string
     tvl: number
     bonus_24h: number
     bonus_7d: number
@@ -25,7 +27,10 @@ export interface Pool {
     name: string
     left_name: string
     right_name: string
+    left_token: string
+    right_token: string
     deposit_link: string
+    ask_price?: string
     boosted: boolean
     incentivised_lp_docs: string
 }
@@ -48,6 +53,8 @@ export async function getAllPools(): Promise<Pool[]> {
         return {
             type: 'ociswap',
             pool_type: 'double',
+            current_price: o.x.price.xrd.now,
+            sub_type: o.pool_type,
             component: o.address,
             tvl: +o.total_value_locked.usd.now,
             bonus_24h: +o.apr['24h'] * 100,
@@ -61,6 +68,8 @@ export async function getAllPools(): Promise<Pool[]> {
             right_alt: o.y.token.symbol,
             left_icon: o.x.token.icon_url,
             right_icon: o.y.token.icon_url,
+            left_token: o.x.token.address,
+            right_token: o.y.token.address,
             name: `${o.x.token.symbol}/${o.y.token.symbol}`,
             left_name: o.x.token.name,
             right_name: o.y.token.name,
@@ -151,6 +160,7 @@ export async function getAllPools(): Promise<Pool[]> {
                             {
                                 type: 'defiplaza',
                                 pool_type: 'double',
+                                sub_type: 'double',
                                 component: d.address,
                                 tvl: d.tvlUSD,
                                 bonus_24h: base?.alr_24h || 0,
@@ -164,10 +174,13 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                left_token: d.baseToken,
+                                right_token: d.quotePool,
                                 name: `${base?.left_alt}/${quote?.right_alt}`,
                                 left_name: base?.left_name || '',
                                 right_name: quote?.right_name || '',
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
+                                ask_price: base?.ask_price,
                                 boosted: !!BOOSTED_POOLS[d.address],
                                 ...(BOOSTED_POOLS[d.address] && {
                                     incentivised_lp_docs:
@@ -177,6 +190,7 @@ export async function getAllPools(): Promise<Pool[]> {
                             {
                                 type: 'defiplaza',
                                 pool_type: 'single',
+                                sub_type: 'single',
                                 component: d.address,
                                 tvl: d.tvlUSD,
                                 bonus_24h: (base?.single.alr_24h || 0) * 10,
@@ -185,6 +199,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 quote: d.quoteToken,
                                 volume_7d: base?.volume_7d || 0,
                                 volume_24h: base?.volume_24h || 0,
+                                left_token: d.baseToken,
+                                right_token: d.quotePool,
                                 bonus_name: 'ALR',
                                 ...(base?.single.side === 'base' && {
                                     left_alt: base?.left_alt || '',
@@ -211,11 +227,13 @@ export async function getAllPools(): Promise<Pool[]> {
         )
     ).flatMap((arr) => arr)
 
-    return [...remappedOciswapPools, ...remappedDefiplazaPools].sort((a, b) => {
-        return (
-            b.volume_7d - a.volume_7d ||
-            b.bonus_7d - a.bonus_7d ||
-            b.tvl - a.tvl
-        )
-    })
+    return [...remappedOciswapPools, ...remappedDefiplazaPools]
+        .filter((pool) => pool.tvl > 0)
+        .sort((a, b) => {
+            return (
+                b.volume_7d - a.volume_7d ||
+                b.bonus_7d - a.bonus_7d ||
+                b.tvl - a.tvl
+            )
+        })
 }

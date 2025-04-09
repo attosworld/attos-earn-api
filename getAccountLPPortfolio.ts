@@ -38,11 +38,11 @@ export interface PoolPortfolioItem {
 export function isDefiplazaLPInfo(
     info: UnderlyingTokens
 ): info is DefiPlazaLPInfo {
-    return 'baseToken' in info && 'quoteToken' in info
+    return info !== null && 'baseToken' in info && 'quoteToken' in info
 }
 
 export function isOciswapLPInfo(info: UnderlyingTokens): info is OciswapLPInfo {
-    return 'x_address' in info && 'y_address' in info
+    return info !== null && 'x_address' in info && 'y_address' in info
 }
 
 export function isOciswapV2LPInfo(
@@ -170,13 +170,10 @@ CALL_METHOD
 ;`
 
 interface EntityInfo {
-    // Add properties that are in the component_entity and vault_entity objects
-    // For example:
-    address: string
-    // ... other properties
+    entity_address: string
 }
 
-interface ResourceChange {
+export interface ResourceChange {
     resource_address: string
     component_entity: EntityInfo
     vault_entity: EntityInfo
@@ -198,22 +195,24 @@ async function getAssetOutStrategyValue(
         const preview = await previewTx(manifest)
 
         const value = (
-            preview.resource_changes.find((rc) =>
+            preview.resource_changes?.find((rc) =>
                 (
                     rc as { index: number; resource_changes: ResourceChange[] }
-                ).resource_changes.find((rc) => +rc.amount > 0)
-            ) as { resource_changes: ResourceChange[] }
-        ).resource_changes[0]
-        const resourceOut = value.resource_address
+                ).resource_changes?.find((rc) => +rc.amount > 0)
+            ) as { resource_changes: ResourceChange[] } | undefined
+        )?.resource_changes[0]
+        const resourceOut = value?.resource_address
 
-        const price = await getOciswapTokenInfo(resourceOut)
-        return new Decimal(value.amount).times(price.price.xrd.now)
+        if (resourceOut) {
+            const price = await getOciswapTokenInfo(resourceOut)
+            return new Decimal(value.amount).times(price.price.xrd.now)
+        }
     }
 
     return new Decimal(0)
 }
 
-async function previewTx(manifest: string) {
+export async function previewTx(manifest: string) {
     return await gatewayApi.transaction.innerClient.transactionPreview({
         transactionPreviewRequest: {
             manifest,
@@ -264,13 +263,13 @@ async function getLPInfo(
             right_token: string
         }
     }
-) {
+): Promise<UnderlyingTokens | undefined> {
     if (lpInfo.type === 'defiplaza' && lpInfo.balance) {
         return await defiplazaLpInfo(lpAddress, lpInfo.balance)
     } else if (lpInfo.type === 'ociswap' && lpInfo.balance) {
         return await getOciswapLpInfo(lpAddress, lpInfo.balance)
     } else if (lpInfo.type === 'ociswap_v2' && lpInfo.nftInfo) {
-        return await Promise.all(
+        return (await Promise.all(
             lpInfo.nftInfo.nfts.map(async (nfi: NftInfo) => {
                 const nft = nfi.nftData
                     .getWithSchema(OciswapV2Nft)
@@ -286,63 +285,51 @@ async function getLPInfo(
                     right_token: lpInfo.nftInfo!.right_token,
                 }))
             })
-        )
+        )) as OciswapLPInfo & { left_token: string; right_token: string }[]
     }
-    return null
 }
 
 export type UnderlyingTokens =
     | OciswapLPInfo
+    | null
     | DefiPlazaLPInfo
-    | {
-          left_token: string
-          right_token: string
-          x_address: string
-          y_address: string
-          x_amount: {
-              token: string
-              xrd: string
-              usd: string
-          }
-          y_amount: {
-              token: string
-              xrd: string
-              usd: string
-          }
-          liquidity_amount: string
-      }[]
+    | null
+    | (OciswapLPInfo & { left_token: string; right_token: string })[]
 
 function calculateCurrentValue(
     underlyingTokens: UnderlyingTokens,
     tokenPrices: Record<string, TokenInfo>
 ) {
     let currentValue = new Decimal(0)
-    if (isDefiplazaLPInfo(underlyingTokens)) {
-        const baseValue = new Decimal(underlyingTokens.baseAmount).times(
-            tokenPrices[underlyingTokens.baseToken]?.tokenPriceUSD || 0
-        )
-        const quoteValue = new Decimal(underlyingTokens.quoteAmount).times(
-            tokenPrices[underlyingTokens.quoteToken]?.tokenPriceUSD || 0
-        )
-        currentValue = baseValue.plus(quoteValue)
-    } else if (isOciswapLPInfo(underlyingTokens)) {
-        const xValue = new Decimal(underlyingTokens.x_amount.token).times(
-            tokenPrices[underlyingTokens.x_address]?.tokenPriceUSD || 0
-        )
-        const yValue = new Decimal(underlyingTokens.y_amount.token).times(
-            tokenPrices[underlyingTokens.y_address]?.tokenPriceUSD || 0
-        )
-        currentValue = xValue.plus(yValue)
-    } else if (isOciswapV2LPInfo(underlyingTokens)) {
-        underlyingTokens.forEach((lp) => {
-            const xValue = new Decimal(lp.x_amount.token).times(
-                tokenPrices[lp.left_token]?.tokenPriceUSD || 0
+
+    if (underlyingTokens) {
+        if (isDefiplazaLPInfo(underlyingTokens)) {
+            const baseValue = new Decimal(underlyingTokens.baseAmount).times(
+                tokenPrices[underlyingTokens.baseToken]?.tokenPriceUSD || 0
             )
-            const yValue = new Decimal(lp.y_amount.token).times(
-                tokenPrices[lp.right_token]?.tokenPriceUSD || 0
+            const quoteValue = new Decimal(underlyingTokens.quoteAmount).times(
+                tokenPrices[underlyingTokens.quoteToken]?.tokenPriceUSD || 0
             )
-            currentValue = currentValue.plus(xValue.plus(yValue))
-        })
+            currentValue = baseValue.plus(quoteValue)
+        } else if (isOciswapLPInfo(underlyingTokens)) {
+            const xValue = new Decimal(underlyingTokens.x_amount.token).times(
+                tokenPrices[underlyingTokens.x_address]?.tokenPriceUSD || 0
+            )
+            const yValue = new Decimal(underlyingTokens.y_amount.token).times(
+                tokenPrices[underlyingTokens.y_address]?.tokenPriceUSD || 0
+            )
+            currentValue = xValue.plus(yValue)
+        } else if (isOciswapV2LPInfo(underlyingTokens)) {
+            underlyingTokens.forEach((lp) => {
+                const xValue = new Decimal(lp.x_amount.token).times(
+                    tokenPrices[lp.left_token]?.tokenPriceUSD || 0
+                )
+                const yValue = new Decimal(lp.y_amount.token).times(
+                    tokenPrices[lp.right_token]?.tokenPriceUSD || 0
+                )
+                currentValue = currentValue.plus(xValue.plus(yValue))
+            })
+        }
     }
     return currentValue
 }
@@ -436,6 +423,7 @@ async function processStrategyTransaction(
             if (
                 collaterals &&
                 'entries' in collaterals &&
+                collaterals.entries.length &&
                 'value' in collaterals.entries[0].value
             ) {
                 const poolUnitXrdAmount = collaterals.entries[0].value
@@ -457,6 +445,7 @@ async function processStrategyTransaction(
             if (
                 loans &&
                 'entries' in loans &&
+                loans.entries.length &&
                 'value' in loans.entries[0].value
             ) {
                 const usdPoolUnitBorrowed = loans.entries[0].value
@@ -631,6 +620,18 @@ export async function getAccountLPPortfolio(address: string) {
                     provider: PAIR_NAME_CACHE[lpAddress]?.provider,
                     invested: investedAmount.toFixed(),
                     currentValue: currentValue.toFixed(),
+                    investedXrd: investedAmount.div(
+                        new Decimal(
+                            tokenPrices[
+                                'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                            ].tokenPriceUSD
+                        )
+                    ),
+                    currentValueXrd: currentValue.div(
+                        tokenPrices[
+                            'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                        ].tokenPriceUSD
+                    ),
                     pnl: pnlAmount.toFixed(),
                     pnlPercentage: pnlPercent,
                 } as PoolPortfolioItem

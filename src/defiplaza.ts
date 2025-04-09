@@ -1,3 +1,8 @@
+import {
+    XRD_RESOURCE_ADDRESS,
+    XUSDC_RESOURCE_ADDRESS,
+} from './resourceAddresses'
+
 export interface DefiplazaPool {
     address: string
     dexAddress: string
@@ -45,6 +50,20 @@ export interface PairState {
     target_ratio: string
     last_outgoing: string
     last_out_spot: string
+}
+
+export interface PoolState {
+    address: string
+    vaults: [
+        {
+            address: string
+            amount: number
+        },
+        {
+            address: string
+            amount: number
+        },
+    ]
 }
 
 export interface DefiplazaPairAnalytics {
@@ -103,9 +122,19 @@ export interface DefiplazaPairAnalytics {
         lpQuoteUSD: number
     }>
     pairState: PairState
+    basePoolState: PoolState
+    quotePoolState: PoolState
 }
 
 export interface VolumeAndTokenMetadata {
+    component: string
+    dexComponent: string
+    basePool: string
+    quotePool: string
+    baseTvl: number
+    quoteTvl: number
+    ask_price: number
+    bid_price: number
     alr_24h: number
     alr_7d: number
     tvl_usd: number
@@ -120,6 +149,8 @@ export interface VolumeAndTokenMetadata {
     baseLPToken: string
     quoteLPToken: string
     pairState: PairState
+    basePoolState: PoolState
+    quotePoolState: PoolState
     single: {
         side: 'base' | 'quote'
         alr_24h: number
@@ -143,6 +174,14 @@ export async function getVolumeAndTokenMetadata(
                 data.pairState.shortage === 'QuoteShortage' ? 'base' : 'quote'
 
             return {
+                component: data.pair.address,
+                dexComponent: data.pair.dexAddress,
+                basePool: data.pair.basePool,
+                quotePool: data.pair.quotePool,
+                baseTvl: data.pair.baseTVL,
+                quoteTvl: data.pair.quoteTVL,
+                ask_price: data.pair.askPrice,
+                bid_price: data.pair.bidPrice,
                 alr_24h: (data.pair.baseAPY + data.pair.quoteAPY) * 100,
                 alr_7d: (data.pair.baseAPY7D + data.pair.quoteAPY7D) * 100,
                 tvl_usd: data.pair.tvlUSD,
@@ -159,6 +198,8 @@ export async function getVolumeAndTokenMetadata(
                 baseLPToken: data.pair.baseLPToken,
                 quoteLPToken: data.pair.quoteLPToken,
                 pairState: data.pairState,
+                basePoolState: data.basePoolState,
+                quotePoolState: data.quotePoolState,
                 single: {
                     side: singleSide,
                     alr_24h:
@@ -195,4 +236,136 @@ export async function getVolumeAndTokenMetadata(
             } as VolumeAndTokenMetadata
         })
         .catch(() => null)
+}
+
+export function createAddDefiplazaCalmLiquidityManifest(
+    poolComponentAddress: string,
+    shortageSide: 'QuoteShortage' | 'BaseShortage'
+): string {
+    console.log(shortageSide)
+    return shortageSide === 'BaseShortage'
+        ? `
+CALL_METHOD
+Address("${poolComponentAddress}")
+"add_liquidity"
+Bucket("buyToken")
+Enum<1u8>(
+Bucket("xrdSide")
+)
+;
+`
+        : `
+CALL_METHOD
+Address("${poolComponentAddress}")
+"add_liquidity"
+Bucket("xrdSide")
+Enum<1u8>(
+Bucket("buyToken")
+)
+;
+`
+}
+
+export function buyFromDfpToken(dexAdddress: string): string {
+    return `
+TAKE_ALL_FROM_WORKTOP
+    Address("${XRD_RESOURCE_ADDRESS}")
+    Bucket("xrd")
+;
+CALL_METHOD
+  Address("${dexAdddress}")
+  "swap"
+  Bucket("xrd")
+  Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
+;
+TAKE_FROM_WORKTOP
+  Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
+  Decimal("{buyTokenAmount}")
+  Bucket("dfp2")
+;
+CALL_METHOD
+  Address("${dexAdddress}")
+  "swap"
+  Bucket("dfp2")
+  Address("{buyToken}")
+;
+`
+}
+
+export function xrdToDfp2AmountManifest(dexAddress: string) {
+    return `
+CALL_METHOD
+Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
+"charge_royalty"
+;
+CALL_METHOD
+  Address("{account}")
+  "withdraw"
+  Address("${XUSDC_RESOURCE_ADDRESS}")
+  Decimal("{xusdcAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${XUSDC_RESOURCE_ADDRESS}")
+  Bucket("bucket_0")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "contribute"
+  Bucket("bucket_0")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1tk024ja6xnstalrqk7lrzhq3pgztxn9gqavsuxuua0up7lqntxdq2a")
+  Bucket("bucket_1")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "create_cdp"
+  Enum<0u8>()
+  Enum<0u8>()
+  Enum<0u8>()
+  Array<Bucket>(
+    Bucket("bucket_1")
+  )
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+  Bucket("nft")
+;
+CREATE_PROOF_FROM_BUCKET_OF_ALL
+  Bucket("nft")
+  Proof("nft_proof")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "borrow"
+  Proof("nft_proof")
+  Array<Tuple>(
+    Tuple(
+      Address("${XRD_RESOURCE_ADDRESS}"),
+      Decimal("{borrowXrdAmount}")
+    )
+  )
+;
+CALL_METHOD
+  Address("{account}")
+  "deposit_batch"
+  Array<Bucket>(
+    Bucket("nft")
+  )
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${XRD_RESOURCE_ADDRESS}")
+  Bucket("xrd")
+;
+CALL_METHOD
+  Address("${dexAddress}")
+  "swap"
+  Bucket("xrd")
+  Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
+;
+CALL_METHOD
+  Address("{account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
 }

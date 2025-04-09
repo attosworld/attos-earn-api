@@ -1,3 +1,5 @@
+import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
+
 export type TimeFrames = {
     '1h': string
     '24h': string
@@ -149,7 +151,7 @@ export async function getOciswapLpInfo(
     ).then((response) => response.json() as Promise<OciswapLPInfo>)
 
     if (lpInfo && 'error' in lpInfo) {
-        throw new Error(`Error fetching Ociswap LP info: ${lpInfo.error}`)
+        return
     }
 
     return lpInfo
@@ -227,4 +229,192 @@ export async function getOciswapTokenInfo(
         console.error('Error fetching token info:', error)
         throw error
     }
+}
+
+interface OciswapPoolDetails {
+    address: string
+    apr: TimeFrames
+    base_token: string
+    blueprint_name: string
+    created_at: string
+    fee: {
+        usd: TimeFramesWithTotal
+        xrd: TimeFramesWithTotal
+    }
+    fee_rate: string
+    liquidity: LiquidityInfo
+    lp_token_address: string
+    name: string
+    pool_type: string
+    rank: number
+    slug: string
+    total_value_locked: {
+        usd: TimeFramesWithNow
+        xrd: TimeFramesWithNow
+    }
+    version: string
+    volume: {
+        usd: TimeFramesWithTotal
+        xrd: TimeFramesWithTotal
+    }
+    x: TokenData
+    y: TokenData
+}
+
+export async function getOciswapPoolDetails(
+    poolIdentifier: string
+): Promise<OciswapPoolDetails | null> {
+    const url = `https://api.ociswap.com/pools/${poolIdentifier}`
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                accept: 'application/json',
+            },
+        })
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const data: OciswapPoolDetails = await response.json()
+        return data
+    } catch (error) {
+        console.error('Error fetching Ociswap pool details:', error)
+        return null
+    }
+}
+
+// Add this interface to your existing types
+export interface TokenAmount {
+    token: string
+    xrd: string
+    usd: string
+}
+
+// Add this interface for the add liquidity preview response
+export interface AddLiquidityPreview {
+    x_amount: TokenAmount
+    y_amount: TokenAmount
+    liquidity_amount: string
+}
+
+export async function getOciswapAddLiquidityPreview(
+    poolAddress: string,
+    xAmount?: string,
+    yAmount?: string,
+    leftBound?: string | null,
+    rightBound?: string | null
+): Promise<AddLiquidityPreview | null> {
+    let url = `https://api.ociswap.com/preview/add-liquidity?pool_address=${poolAddress}`
+
+    if (xAmount) {
+        url += `&x_amount=${xAmount}`
+    }
+    if (yAmount) {
+        url += `&y_amount=${yAmount}`
+    }
+    if (leftBound) {
+        url += `&left_bound=${leftBound}`
+    }
+    if (rightBound) {
+        url += `&right_bound=${rightBound}`
+    }
+
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                accept: 'application/json',
+            },
+        })
+
+        if (!response.ok) {
+            console.error(`HTTP error! status: ${response.status}`)
+            console.error(`HTTP error! json: ${await response.text()}`)
+        }
+
+        const data: AddLiquidityPreview = await response.json()
+        return data
+    } catch (error) {
+        console.error('Error fetching Ociswap add liquidity preview:', error)
+        return null
+    }
+}
+
+export function buyFromOciToken(dexAddress: string): string {
+    return `
+TAKE_FROM_WORKTOP
+  Address("${XRD_RESOURCE_ADDRESS}")
+  Decimal("{buyTokenAmount}")
+  Bucket("xrd")
+;
+CALL_METHOD
+  Address("${dexAddress}")
+  "swap"
+  Bucket("xrd")
+;
+`
+}
+
+interface Swap {
+    input_address: string
+    input_amount: TokenAmount
+    input_take: string
+    output_address: string
+    output_amount: TokenAmount
+    input_fee_lp: TokenAmount
+    input_fee_settlement: TokenAmount
+    price_impact: string
+    pool_address: string
+    protocol: string
+}
+
+interface SwapPreview {
+    input_address: string
+    input_amount: TokenAmount
+    output_address: string
+    output_amount: TokenAmount
+    input_fee_lp: TokenAmount
+    input_fee_settlement: TokenAmount
+    price_impact: string
+    swaps: Swap[]
+}
+
+export async function getOciswapSwapPreview(
+    inputAddress: string,
+    inputAmount: string,
+    outputAddress: string,
+    outputAmount: string
+): Promise<SwapPreview | null> {
+    const url = new URL('https://api.ociswap.com/preview/swap')
+    if (inputAddress) {
+        url.searchParams.append('input_address', inputAddress)
+    }
+    if (inputAmount) {
+        url.searchParams.append('input_amount', inputAmount)
+    }
+    if (outputAddress) {
+        url.searchParams.append('output_address', outputAddress)
+    }
+    if (outputAmount) {
+        url.searchParams.append('output_amount', outputAmount)
+    }
+
+    const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+            accept: 'application/json',
+        },
+    })
+
+    if (!response.ok) {
+        console.error(url)
+        console.error(`swap preview HTTP error! status: ${response.status}`)
+        console.error(await response.text())
+        return null
+    }
+
+    return (await response.json()) as SwapPreview
 }
