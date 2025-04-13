@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js'
 import { PAIR_NAME_CACHE, BOOSTED_POOLS, TOKEN_INFO } from '.'
 import { getTokenMetadata } from './getTokenMetadata'
 import {
@@ -36,8 +37,10 @@ export interface Pool {
 }
 
 export async function getAllPools(): Promise<Pool[]> {
-    const ociPools = await getOciswapPools()
-    const dfpPools = await getDefiplazaPools()
+    const [ociPools, dfpPools] = await Promise.all([
+        getOciswapPools(),
+        getDefiplazaPools(),
+    ])
 
     if (!ociPools || !dfpPools) return []
 
@@ -55,6 +58,14 @@ export async function getAllPools(): Promise<Pool[]> {
             pool_type: 'double',
             current_price: o.x.price.xrd.now,
             sub_type: o.pool_type,
+            xRatio: new Decimal(o.x.liquidity.token.now).div(
+                o.y.liquidity.token.now
+            ),
+            yRatio: new Decimal(o.y.liquidity.token.now).div(
+                new Decimal(o.y.liquidity.token.now).plus(
+                    o.x.liquidity.token.now
+                )
+            ),
             component: o.address,
             tvl: +o.total_value_locked.usd.now,
             bonus_24h: +o.apr['24h'] * 100,
@@ -78,7 +89,7 @@ export async function getAllPools(): Promise<Pool[]> {
             ...(BOOSTED_POOLS[o.address] && {
                 incentivised_lp_docs: BOOSTED_POOLS[o.address].docs,
             }),
-        }
+        } as Pool
     })
 
     const remappedDefiplazaPools = (
@@ -156,12 +167,45 @@ export async function getAllPools(): Promise<Pool[]> {
                             }
                         }
 
+                        let xRatio: string = '0'
+                        let yRatio: string = '0'
+
+                        if (base) {
+                            if (base.pairState.shortage == 'BaseShortage') {
+                                xRatio = new Decimal(
+                                    base.basePoolState.vaults[1].amount
+                                )
+                                    .div(base.basePoolState.vaults[0].amount)
+                                    .toFixed()
+                                yRatio = new Decimal(
+                                    base.basePoolState.vaults[0].amount
+                                )
+                                    .div(base.basePoolState.vaults[1].amount)
+                                    .toFixed()
+                            } else if (
+                                base.pairState.shortage == 'QuoteShortage'
+                            ) {
+                                xRatio = new Decimal(
+                                    base.quotePoolState.vaults[1].amount
+                                )
+                                    .div(base.quotePoolState.vaults[0].amount)
+                                    .toFixed()
+                                yRatio = new Decimal(
+                                    base.quotePoolState.vaults[0].amount
+                                )
+                                    .div(base.quotePoolState.vaults[1].amount)
+                                    .toFixed()
+                            }
+                        }
+
                         return [
                             {
                                 type: 'defiplaza',
                                 pool_type: 'double',
                                 sub_type: 'double',
                                 component: d.address,
+                                xRatio: xRatio,
+                                yRatio: yRatio,
                                 tvl: d.tvlUSD,
                                 bonus_24h: base?.alr_24h || 0,
                                 bonus_7d: base?.alr_7d || 0,
@@ -175,7 +219,7 @@ export async function getAllPools(): Promise<Pool[]> {
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
                                 left_token: d.baseToken,
-                                right_token: d.quotePool,
+                                right_token: d.quoteToken,
                                 name: `${base?.left_alt}/${quote?.right_alt}`,
                                 left_name: base?.left_name || '',
                                 right_name: quote?.right_name || '',
@@ -193,6 +237,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 sub_type: 'single',
                                 component: d.address,
                                 tvl: d.tvlUSD,
+                                xRatio: 0,
+                                yRatio: 0,
                                 bonus_24h: (base?.single.alr_24h || 0) * 10,
                                 bonus_7d: (base?.single.alr_7d || 0) * 10,
                                 base: d.baseToken,
@@ -200,8 +246,9 @@ export async function getAllPools(): Promise<Pool[]> {
                                 volume_7d: base?.volume_7d || 0,
                                 volume_24h: base?.volume_24h || 0,
                                 left_token: d.baseToken,
-                                right_token: d.quotePool,
+                                right_token: d.quoteToken,
                                 bonus_name: 'ALR',
+                                side: base?.single.side,
                                 ...(base?.single.side === 'base' && {
                                     left_alt: base?.left_alt || '',
                                     left_icon: base?.left_icon || '',
@@ -225,7 +272,7 @@ export async function getAllPools(): Promise<Pool[]> {
                 })
                 .flatMap((arr) => arr)
         )
-    ).flatMap((arr) => arr)
+    ).flatMap((arr) => arr) as Pool[]
 
     return [...remappedOciswapPools, ...remappedDefiplazaPools]
         .filter((pool) => pool.tvl > 0)

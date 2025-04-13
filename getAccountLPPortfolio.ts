@@ -2,7 +2,9 @@ import type { NftInfo } from '@calamari-radix/gateway-ez-mode/dist/types'
 import Decimal from 'decimal.js'
 import { gatewayApi, gatewayApiEzMode, PAIR_NAME_CACHE } from '.'
 import {
+    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     getAllAddLiquidityTxs,
+    OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     type EnhancedTransactionInfo,
 } from './getAllAddLiquidityTxs'
 import { tokensRequest, type TokenInfo } from './src/astrolescent'
@@ -205,7 +207,9 @@ async function getAssetOutStrategyValue(
 
         if (resourceOut) {
             const price = await getOciswapTokenInfo(resourceOut)
-            return new Decimal(value.amount).times(price.price.xrd.now)
+            if (price) {
+                return new Decimal(value.amount).times(price.price.xrd.now)
+            }
         }
     }
 
@@ -379,143 +383,167 @@ async function processStrategyTransaction(
     tx: CommittedTransactionInfo,
     tokenPrices: Record<string, TokenInfo>,
     address: string,
-    rootFinancePoolState: RootFinancePoolStateResponse
+    rootFinancePoolState: RootFinancePoolStateResponse,
+    txs: EnhancedTransactionInfo[]
 ) {
-    let investedAmount = new Decimal(0)
-    let currentValue = new Decimal(0)
-    let closeManifest: string = ''
-
-    const xrdChange = tx.balance_changes?.fungible_balance_changes.find(
-        (bc) =>
-            bc.resource_address ===
-                'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
-            bc.entity_address.startsWith('account_rdx')
-    )
-
-    const surgeLp = tx.balance_changes?.fungible_balance_changes.find(
-        (bc) =>
-            bc.resource_address !==
-                'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
-            bc.entity_address.startsWith('account_rdx')
-    )
-
-    const rootNft = tx.balance_changes?.non_fungible_balance_changes.find(
-        (bc) =>
-            bc.resource_address ===
-                'resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f' &&
-            bc.entity_address.startsWith('account_rdx')
-    )
-
-    let underlyingXrdAmount = new Decimal(0)
-    let underlyingUsdAmount = new Decimal(0)
-
-    if (rootNft && surgeLp) {
-        const nft = await gatewayApi.state.getNonFungibleData(
-            rootNft?.resource_address,
-            rootNft.added
+    if (
+        OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST.every((method) =>
+            tx.manifest_instructions?.includes(method)
         )
-        const data = nft[0].data?.programmatic_json
-        if (data?.kind === 'Tuple') {
-            const collaterals = data.fields.find(
-                (f) => f.field_name === 'collaterals'
+    ) {
+        let investedAmount = new Decimal(0)
+        let currentValue = new Decimal(0)
+        let closeManifest: string = ''
+
+        const xrdChange = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address ===
+                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        const surgeLp = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !==
+                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        const rootNft = tx.balance_changes?.non_fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address ===
+                    'resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f' &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        let underlyingXrdAmount = new Decimal(0)
+        let underlyingUsdAmount = new Decimal(0)
+
+        if (rootNft && surgeLp) {
+            const nft = await gatewayApi.state.getNonFungibleData(
+                rootNft?.resource_address,
+                rootNft.added
             )
-            const loans = data.fields.find((f) => f.field_name === 'loans')
-            if (
-                collaterals &&
-                'entries' in collaterals &&
-                collaterals.entries.length &&
-                'value' in collaterals.entries[0].value
-            ) {
-                const poolUnitXrdAmount = collaterals.entries[0].value
-                    .value as string
+            const data = nft[0].data?.programmatic_json
+            if (data?.kind === 'Tuple') {
+                const collaterals = data.fields.find(
+                    (f) => f.field_name === 'collaterals'
+                )
+                const loans = data.fields.find((f) => f.field_name === 'loans')
+                if (
+                    collaterals &&
+                    'entries' in collaterals &&
+                    collaterals.entries.length &&
+                    'value' in collaterals.entries[0].value
+                ) {
+                    const poolUnitXrdAmount = collaterals.entries[0].value
+                        .value as string
 
-                const ratio = rootFinancePoolState.states.find(
-                    (s) =>
-                        s.address ===
-                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                )?.unit_to_asset_ratio
+                    const ratio = rootFinancePoolState.states.find(
+                        (s) =>
+                            s.address ===
+                            'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                    )?.unit_to_asset_ratio
 
-                if (ratio) {
-                    underlyingXrdAmount = new Decimal(poolUnitXrdAmount).div(
-                        new Decimal(ratio)
-                    )
-                    currentValue = currentValue.add(underlyingXrdAmount)
+                    if (ratio) {
+                        underlyingXrdAmount = new Decimal(
+                            poolUnitXrdAmount
+                        ).div(new Decimal(ratio))
+                        currentValue = currentValue.add(underlyingXrdAmount)
+                    }
                 }
-            }
-            if (
-                loans &&
-                'entries' in loans &&
-                loans.entries.length &&
-                'value' in loans.entries[0].value
-            ) {
-                const usdPoolUnitBorrowed = loans.entries[0].value
-                    .value as string
+                if (
+                    loans &&
+                    'entries' in loans &&
+                    loans.entries.length &&
+                    'value' in loans.entries[0].value
+                ) {
+                    const usdPoolUnitBorrowed = loans.entries[0].value
+                        .value as string
 
-                const ratio = rootFinancePoolState.states.find(
-                    (s) =>
-                        s.address ===
-                        'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
-                )?.unit_to_asset_ratio
+                    const ratio = rootFinancePoolState.states.find(
+                        (s) =>
+                            s.address ===
+                            'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
+                    )?.unit_to_asset_ratio
 
-                if (ratio) {
-                    underlyingUsdAmount = new Decimal(usdPoolUnitBorrowed).div(
-                        ratio
-                    )
-                    currentValue = currentValue.minus(
-                        underlyingUsdAmount.times(
-                            tokenPrices[
-                                'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
-                            ].tokenPriceXRD
+                    if (ratio) {
+                        underlyingUsdAmount = new Decimal(
+                            usdPoolUnitBorrowed
+                        ).div(ratio)
+                        currentValue = currentValue.minus(
+                            underlyingUsdAmount.times(
+                                tokenPrices[
+                                    'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
+                                ].tokenPriceXRD
+                            )
                         )
-                    )
+                    }
                 }
             }
+            closeManifest = CLOSE_STRATEGY_MANIFEST.replaceAll(
+                '{account}',
+                address
+            )
+                .replaceAll('{surgeLpAmount}', surgeLp.balance_change)
+                .replaceAll('{rootNftId}', rootNft.added[0])
+                .replaceAll(
+                    '{lendAmount}',
+                    underlyingXrdAmount.toDecimalPlaces(18).toString()
+                )
         }
-        closeManifest = CLOSE_STRATEGY_MANIFEST.replaceAll('{account}', address)
-            .replaceAll('{surgeLpAmount}', surgeLp.balance_change)
-            .replaceAll('{rootNftId}', rootNft.added[0])
-            .replaceAll(
-                '{lendAmount}',
-                underlyingXrdAmount.toDecimalPlaces(18).toString()
-            )
-    }
 
-    if (xrdChange) {
-        investedAmount = new Decimal(Math.abs(+xrdChange.balance_change))
-    }
+        if (xrdChange) {
+            investedAmount = new Decimal(Math.abs(+xrdChange.balance_change))
+        }
 
-    const outAsset = tx.balance_changes?.fungible_balance_changes.find(
-        (bc) =>
-            bc.resource_address !==
-                'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
-            bc.entity_address.startsWith('account_rdx')
-    )
-
-    if (outAsset) {
-        currentValue = currentValue.add(
-            await getAssetOutStrategyValue(outAsset, address)
+        const outAsset = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !==
+                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.entity_address.startsWith('account_rdx')
         )
-    }
 
-    return {
-        currentValueXrd: currentValue,
-        currentValueUsd: currentValue.times(
-            new Decimal(
-                tokenPrices[
-                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                ].tokenPriceUSD
+        if (outAsset) {
+            currentValue = currentValue.add(
+                await getAssetOutStrategyValue(outAsset, address)
             )
-        ),
-        investedAmountXrd: investedAmount,
-        investedAmountUsd: investedAmount.times(
-            new Decimal(
-                tokenPrices[
-                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                ].tokenPriceUSD
+        }
+
+        if (
+            txs.find(
+                (tx) =>
+                    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every(
+                        (method) =>
+                            tx.manifest_instructions?.includes(method) || ''
+                    ) &&
+                    tx.manifest_instructions?.includes(rootNft?.added[0] || '')
             )
-        ),
-        closeManifest,
+        ) {
+            investedAmount = new Decimal(0)
+        }
+
+        return {
+            currentValueXrd: currentValue,
+            currentValueUsd: currentValue.times(
+                new Decimal(
+                    tokenPrices[
+                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                    ].tokenPriceUSD
+                )
+            ),
+            investedAmountXrd: investedAmount,
+            investedAmountUsd: investedAmount.times(
+                new Decimal(
+                    tokenPrices[
+                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                    ].tokenPriceUSD
+                )
+            ),
+            closeManifest,
+        }
     }
+    return null
 }
 
 export async function getAccountLPPortfolio(address: string) {
@@ -588,6 +616,8 @@ export async function getAccountLPPortfolio(address: string) {
 
     const rootFinancePoolState = await getRootFinancePoolState()
 
+    if (!rootFinancePoolState) return []
+
     const portfolioPnL: PoolPortfolioItem[] = (
         await Promise.all([
             ...Object.entries(lps).map(async ([lpAddress, lpInfo]) => {
@@ -636,19 +666,25 @@ export async function getAccountLPPortfolio(address: string) {
                     pnlPercentage: pnlPercent,
                 } as PoolPortfolioItem
             }),
-            ...strategyTxs.map(async (tx) => {
+            ...strategyTxs.map(async (tx, _, txs) => {
+                const strategyTx = await processStrategyTransaction(
+                    tx,
+                    tokenPrices,
+                    address,
+                    rootFinancePoolState,
+                    txs
+                )
+
+                if (!strategyTx) return null
+
                 const {
                     investedAmountXrd,
                     investedAmountUsd,
                     currentValueXrd,
                     currentValueUsd,
                     closeManifest,
-                } = await processStrategyTransaction(
-                    tx,
-                    tokenPrices,
-                    address,
-                    rootFinancePoolState
-                )
+                } = strategyTx
+
                 const pnlAmount = currentValueUsd.minus(investedAmountUsd)
                 const pnlPercent = investedAmountUsd.isZero()
                     ? '0'
@@ -675,6 +711,11 @@ export async function getAccountLPPortfolio(address: string) {
     ).filter(Boolean) as PoolPortfolioItem[]
 
     return portfolioPnL.filter(
-        (pool) => pool && ((+pool.invested || 0) > 1 || pool.strategy)
+        (pool) =>
+            pool &&
+            ((+pool.invested || 0) > 1 ||
+                (pool.strategy &&
+                    +pool.invested != 0 &&
+                    +pool.currentValue != 0))
     )
 }

@@ -16,10 +16,31 @@ const isAddLiquidityTx = (tx: CommittedTransactionInfo): boolean =>
     !!tx.manifest_instructions?.includes('add_liquidity') &&
     !tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT)
 
+export const CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
+    'remove_liquidity',
+    'unwrap',
+    'repay',
+    'remove_collateral',
+    'swap',
+]
+
+export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
+    'charge_royalty',
+    'withdraw',
+    'contribute',
+    'create_cdp',
+    'borrow',
+    'wrap',
+    'add_liquidity',
+]
+
 const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
-    !!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&
-    !!tx.balance_changes?.fungible_fee_balance_changes.some(
-        (f) => f.type === 'RoyaltyDistributed'
+    (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&
+        !!tx.balance_changes?.fungible_fee_balance_changes.some(
+            (f) => f.type === 'RoyaltyDistributed'
+        )) ||
+    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every((method) =>
+        tx.manifest_instructions?.includes(method)
     )
 
 const isRemoveLiquidityTx = (tx: CommittedTransactionInfo): boolean =>

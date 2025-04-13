@@ -8,7 +8,6 @@ import {
 } from './defiplaza'
 import {
     getOciswapPoolDetails,
-    getOciswapAddLiquidityPreview,
     getOciswapSwapPreview,
     buyFromOciToken,
 } from './ociswap'
@@ -28,7 +27,9 @@ export async function handleOciswapStrategy(
     borrowXrdAmount: string,
     usdAmount: string,
     minPercentage: number | null,
-    maxPercentage: number | null
+    maxPercentage: number | null,
+    xTokenAmount: string | null,
+    yTokenAmount: string | null
 ) {
     const poolDetails = await getOciswapPoolDetails(component)
 
@@ -41,20 +42,9 @@ export async function handleOciswapStrategy(
         poolDetails.pool_type === 'basic' ||
         poolDetails.pool_type === 'flex'
     ) {
-        const xValueInXrd = new Decimal(poolDetails.x.liquidity.xrd.now)
-        const yValueInXrd = new Decimal(poolDetails.y.liquidity.xrd.now)
-        const totalPoolValueInXrd = xValueInXrd.plus(yValueInXrd)
-
         const totalBorrowedXrd = new Decimal(borrowXrdAmount)
 
-        console.log(totalBorrowedXrd)
-
-        // Calculate the ratio of X to Y
-        const xRatio = xValueInXrd.div(totalPoolValueInXrd)
-
-        const xrdForX = totalBorrowedXrd.mul(xRatio)
-
-        console.log('xRatio ', xRatio, xrdForX)
+        const xrdForX = totalBorrowedXrd.mul(0.5)
 
         let addLiquidityManifest
 
@@ -63,8 +53,6 @@ export async function handleOciswapStrategy(
                 return ''
             }
 
-            console.log('minPercentage ', minPercentage)
-            console.log('maxPercentage ', maxPercentage)
             addLiquidityManifest = createAddLiquidityManifest(
                 poolDetails.address,
                 poolDetails.x.price.token.now,
@@ -78,34 +66,25 @@ export async function handleOciswapStrategy(
             )
         }
 
-        const leftBound =
-            typeof addLiquidityManifest !== 'string'
-                ? addLiquidityManifest.lowerTick.toFixed()
-                : '0'
-        const rightBound =
-            typeof addLiquidityManifest !== 'string'
-                ? addLiquidityManifest.upperTick.toFixed()
-                : '0'
+        const swapPreview = await getOciswapSwapPreview(
+            poolDetails.y.token.address,
+            '',
+            poolDetails.x.token.address,
+            xrdForX.div(poolDetails.x.price.token.now).toFixed(18)
+        )
 
-        const [addLiquidityPreview, swapPreview] = await Promise.all([
-            getOciswapAddLiquidityPreview(
-                poolDetails.address,
-                xrdForX.toFixed(18),
-                undefined,
-                leftBound,
-                rightBound
-            ),
-            getOciswapSwapPreview(
-                poolDetails.y.token.address,
-                '',
-                poolDetails.x.token.address,
-                xrdForX.toFixed(18)
-            ),
-        ])
+        console.log('swapPreview ', swapPreview)
 
-        if (!addLiquidityPreview || !swapPreview) {
+        if (!swapPreview) {
             return ''
         }
+
+        console.log(
+            'xRatio ',
+            totalBorrowedXrd,
+            swapPreview?.input_amount.xrd,
+            totalBorrowedXrd.minus(swapPreview?.input_amount.xrd).toFixed(18)
+        )
 
         const yTakeManifest = `TAKE_ALL_FROM_WORKTOP
 Address("${XRD_RESOURCE_ADDRESS}")
@@ -123,7 +102,7 @@ Bucket("xrdSide");`
             .replaceAll('{xusdcAmount}', usdAmount)
             .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
             .replaceAll('{buyToken}', poolDetails.x.token.address)
-            .replaceAll('{buyTokenAmount}', xrdForX.toFixed(18))
+            .replaceAll('{buyTokenAmount}', swapPreview.input_amount.xrd)
             .replaceAll(
                 '{addLiquidityManifest}',
                 typeof addLiquidityManifest === 'string'
@@ -132,9 +111,7 @@ Bucket("xrdSide");`
             )
             .replaceAll(
                 '{repayRemainingManifest}',
-                `
-CALL_METHOD Address("${account}") "deposit_batch" Array<Bucket>(Bucket("nft"));
-                        `
+                `CALL_METHOD Address("${account}") "deposit_batch" Array<Bucket>(Bucket("nft"));`
             )
             .replaceAll('\n', ' ')
 
@@ -161,7 +138,9 @@ CALL_METHOD Address("${account}") "deposit_batch" Array<Bucket>(Bucket("nft"));
             )
             .replaceAll(
                 '{repayRemainingManifest}',
-                +remaining > 0 ? getRepayLoanManifest(account) : ''
+                +remaining > 0
+                    ? getRepayLoanManifest(account)
+                    : `CALL_METHOD Address("${account}") "deposit_batch" Array<Bucket>(Bucket("nft"));`
             )
             .replaceAll('\n', ' ')
             .replaceAll('  ', ' ')
@@ -234,6 +213,15 @@ export async function handleDefiplazaStrategy(
     const dfp2ForBase = totalBorrowedDfp2.mul(baseRatio)
     const dfp2ForQuote = totalBorrowedDfp2.mul(quoteRatio)
 
+    const v = calculateOptimalLiquidity(
+        totalBorrowedDfp2,
+        new Decimal(poolDetails.baseTvl).div(
+            new Decimal(poolDetails.baseTvl).plus(poolDetails.quoteTvl)
+        )
+    )
+
+    console.log('vibe ai output', v)
+
     console.log(
         'base ratio ',
         ratio,
@@ -270,7 +258,7 @@ Bucket("xrdSide");`
         .replaceAll('{buyManifest}', buyFromDfpToken(poolDetails.dexComponent))
         .replaceAll('{xusdcAmount}', usdAmount)
         .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
-        .replaceAll('{buyTokenAmount}', buyTokenFromDfp2Amount)
+        .replaceAll('{buyTokenAmount}', v.xTokensToSell.toFixed(18))
         .replaceAll('{yTakeManifest}', yTakeManifest)
         .replaceAll('{addLiquidityManifest}', addLiquidityManifest)
         .replaceAll('{buyToken}', buyToken)
@@ -302,7 +290,9 @@ export const STRATEGY_MANIFEST: Record<
             buyToken: string | null,
             component: string | null,
             leftPercentage: number | null,
-            rightPercentage: number | null
+            rightPercentage: number | null,
+            xTokenAmount: number | null,
+            yTokenAmount: number | null
         ) => Promise<string>
     }
 > = {
@@ -405,6 +395,10 @@ CALL_METHOD
                 getRootMarketStats(),
             ])
 
+            if (!stats) {
+                return ''
+            }
+
             const borrowUsdcLimit = ltv || +stats.assets.radix.optimalUsage
 
             const xrdToUsd = (marketPrices?.assetPrice || 0) * +xrdAmount
@@ -497,7 +491,9 @@ CALL_METHOD
             buyToken: string | null,
             component: string | null,
             minPercentage: number | null,
-            maxPercentage: number | null
+            maxPercentage: number | null,
+            xTokenAmount: string | null,
+            yTokenAmount: string | null
         ) => {
             if (!buyToken || !component) {
                 return ''
@@ -511,6 +507,10 @@ CALL_METHOD
                 ),
                 getRootMarketStats(),
             ])
+
+            if (!stats) {
+                return ''
+            }
 
             const borrowUsdcLimit =
                 ltv || +stats.assets['usd-coin'].optimalUsage
@@ -533,7 +533,9 @@ CALL_METHOD
                     borrowXrdAmount,
                     usdAmount,
                     minPercentage,
-                    maxPercentage
+                    maxPercentage,
+                    xTokenAmount,
+                    yTokenAmount
                 )
             } else if (STRATEGY_MANIFEST[id].poolProvider === 'Defiplaza') {
                 return await handleDefiplazaStrategy(
@@ -590,13 +592,22 @@ async function getRemainingXrd(manifest: string) {
     ) as { resource_changes: ResourceChange[] }[]
 
     const xrdRemaining = value
-        .filter((rc) =>
+        ?.filter((rc) =>
             rc.resource_changes.find((rcc) =>
                 rcc.component_entity?.entity_address?.startsWith('account_rdx')
             )
         )
-        .map((rc) => rc.resource_changes)[0][0].amount
-    return xrdRemaining
+        .map((rc) => rc.resource_changes)
+
+    if (
+        !xrdRemaining.length ||
+        !xrdRemaining[0].length ||
+        !xrdRemaining[0][0]?.amount
+    ) {
+        return '0'
+    }
+
+    return xrdRemaining[0][0].amount ?? '0'
 }
 
 function getRepayLoanManifest(account: string) {
@@ -638,4 +649,42 @@ Address("${account}")
 Expression("ENTIRE_WORKTOP")
 ;
 `
+}
+
+interface LiquidityResult {
+    xTokensToKeep: Decimal
+    xTokensToSell: Decimal
+    yTokensToAcquire: Decimal
+}
+
+function calculateOptimalLiquidity(
+    totalXTokens: Decimal,
+    desiredRatio: Decimal
+): LiquidityResult {
+    // desiredRatio is the ratio of X tokens to Y tokens we want in the pool
+    // For example, if desiredRatio is 0.5, we want 1 X token for every 2 Y tokens
+
+    // Calculate the square root of the ratio
+    const sqrtRatio = desiredRatio.sqrt()
+
+    // Calculate the optimal amounts
+    const xTokensToKeep = totalXTokens
+        .mul(sqrtRatio)
+        .div(new Decimal(1).plus(sqrtRatio))
+    const yTokensToAcquire = xTokensToKeep.div(desiredRatio)
+
+    // Calculate how many X tokens need to be sold
+    const xTokensToSell = totalXTokens.minus(xTokensToKeep)
+
+    return {
+        xTokensToKeep,
+        xTokensToSell,
+        yTokensToAcquire,
+    }
+}
+
+export function getPoolComposition(leftBound: number, rightBound: number) {
+    return new Decimal(leftBound)
+        .abs()
+        .div(new Decimal(leftBound).abs().plus(rightBound).abs())
 }

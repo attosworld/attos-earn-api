@@ -21,7 +21,7 @@ export interface RootFinancePoolStateResponse {
     states: PoolState[]
 }
 
-export async function getRootFinancePoolState(): Promise<RootFinancePoolStateResponse> {
+export async function getRootFinancePoolState(): Promise<RootFinancePoolStateResponse | null> {
     try {
         const response = await fetch(
             'https://backend-prod.rootfinance.xyz/api/markets/pool-state',
@@ -34,7 +34,8 @@ export async function getRootFinancePoolState(): Promise<RootFinancePoolStateRes
         )
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.error(`HTTP error! status: ${response.status}`)
+            return null
         }
 
         return (await response.json()) as RootFinancePoolStateResponse

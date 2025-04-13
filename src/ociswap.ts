@@ -208,7 +208,7 @@ interface OciswapTokenInfo {
 
 export async function getOciswapTokenInfo(
     tokenAddress: string
-): Promise<OciswapTokenInfo> {
+): Promise<OciswapTokenInfo | null> {
     const url = `https://api.ociswap.com/tokens/${tokenAddress}`
 
     try {
@@ -220,7 +220,8 @@ export async function getOciswapTokenInfo(
         })
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.error(`HTTP error! status: ${response.status}`)
+            return null
         }
 
         const data: OciswapTokenInfo = await response.json()
@@ -275,7 +276,8 @@ export async function getOciswapPoolDetails(
         })
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.error(`HTTP error! status: ${response.status}`)
+            return null
         }
 
         const data: OciswapPoolDetails = await response.json()

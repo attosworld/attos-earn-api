@@ -132,3 +132,206 @@ CALL_METHOD
 
     return { manifest, lowerTick, upperTick }
 }
+
+const TICK_BASE_SQRT = new Decimal('1.0001').sqrt()
+const MAX_TICK = 887272 // This value might need adjustment based on your specific requirements
+
+// Enum for SwapType
+enum SwapType {
+    BuyX,
+    SellX,
+}
+
+// Interface for TokenAmount
+interface TokenAmount {
+    token: string
+    resource_address: string
+}
+
+// Function to calculate the number of ticks
+function numberOfTicks(spacing: number): number {
+    return 2 * Math.floor(MAX_TICK / spacing) + 1
+}
+
+// Function to calculate max liquidity per tick
+function maxLiquidityPerTick(spacing: number): Decimal {
+    // Assuming MAX_LIQUIDITY is defined elsewhere
+    return MAX_LIQUIDITY.div(new Decimal(numberOfTicks(spacing)))
+}
+
+// Function to convert tick to price sqrt
+function tickToPriceSqrt(tick: number): Decimal {
+    return TICK_BASE_SQRT.pow(tick)
+}
+
+// Function to align tick
+function alignTick(tick: number, spacing: number): number {
+    return Math.floor(tick / spacing) * spacing
+}
+
+// Function to calculate addable amounts
+function addableAmounts(
+    xAmount: Decimal,
+    xDivisibility: number,
+    yAmount: Decimal,
+    yDivisibility: number,
+    priceSqrt: Decimal,
+    priceLeftBoundSqrt: Decimal,
+    priceRightBoundSqrt: Decimal
+): [Decimal, Decimal, Decimal] {
+    const xPrecisionMargin = new Decimal(10).pow(-xDivisibility).mul(2)
+    const yPrecisionMargin = new Decimal(10).pow(-yDivisibility).mul(2)
+
+    const xAmountSafe = xAmount.sub(xPrecisionMargin).max(new Decimal(0))
+    const yAmountSafe = yAmount.sub(yPrecisionMargin).max(new Decimal(0))
+
+    if (priceSqrt.lte(priceLeftBoundSqrt)) {
+        const xScale = xScaleSafe(priceLeftBoundSqrt, priceRightBoundSqrt)
+        const xLiquidity = xAmountSafe.div(xScale)
+        return [xLiquidity, xAmount, new Decimal(0)]
+    }
+
+    if (priceSqrt.gte(priceRightBoundSqrt)) {
+        const yScale = yScaleSafe(priceLeftBoundSqrt, priceRightBoundSqrt)
+        const yLiquidity = yAmountSafe.div(yScale)
+        return [yLiquidity, new Decimal(0), yAmount]
+    }
+
+    const xScale = xScaleSafe(priceSqrt, priceRightBoundSqrt)
+    const xLiquidity = xAmountSafe.div(xScale)
+
+    const yScale = yScaleSafe(priceLeftBoundSqrt, priceSqrt)
+    const yLiquidity = yAmountSafe.div(yScale)
+
+    const liquidity = Decimal.min(xLiquidity, yLiquidity)
+
+    const xAmountAllowed = liquidity
+        .mul(xScale)
+        .add(Decimal.ATTO)
+        .ceil()
+        .toDecimalPlaces(xDivisibility)
+    const yAmountAllowed = liquidity
+        .mul(yScale)
+        .add(Decimal.ATTO)
+        .ceil()
+        .toDecimalPlaces(yDivisibility)
+
+    return [
+        liquidity,
+        adjustWithinMargin(xAmount, xAmountAllowed, xPrecisionMargin),
+        adjustWithinMargin(yAmount, yAmountAllowed, yPrecisionMargin),
+    ]
+}
+
+// Helper functions
+function xScaleSafe(lowerPriceSqrt: Decimal, upperPriceSqrt: Decimal): Decimal {
+    return new Decimal(1)
+        .div(lowerPriceSqrt)
+        .add(Decimal.ATTO)
+        .sub(new Decimal(1).div(upperPriceSqrt))
+}
+
+function yScaleSafe(lowerPriceSqrt: Decimal, upperPriceSqrt: Decimal): Decimal {
+    return upperPriceSqrt.sub(lowerPriceSqrt)
+}
+
+function adjustWithinMargin(
+    amount: Decimal,
+    allowedAmount: Decimal,
+    margin: Decimal
+): Decimal {
+    if (amount.sub(allowedAmount).lte(margin)) {
+        return amount
+    }
+    return allowedAmount
+}
+
+// Function to calculate removable amounts
+function removableAmounts(
+    liquidity: Decimal,
+    priceSqrt: Decimal,
+    priceLeftBoundSqrt: Decimal,
+    priceRightBoundSqrt: Decimal,
+    xDivisibility: number,
+    yDivisibility: number
+): [Decimal, Decimal] {
+    if (priceSqrt.lte(priceLeftBoundSqrt)) {
+        const xAmount = liquidity
+            .div(priceLeftBoundSqrt)
+            .sub(liquidity.div(priceRightBoundSqrt).add(Decimal.ATTO))
+            .max(new Decimal(0))
+        return [xAmount.floor().toDecimalPlaces(xDivisibility), new Decimal(0)]
+    }
+
+    if (priceSqrt.gte(priceRightBoundSqrt)) {
+        const yAmount = liquidity.mul(
+            priceRightBoundSqrt.sub(priceLeftBoundSqrt)
+        )
+        return [new Decimal(0), yAmount.floor().toDecimalPlaces(yDivisibility)]
+    }
+
+    const xAmount = liquidity
+        .div(priceSqrt)
+        .sub(liquidity.div(priceRightBoundSqrt).add(Decimal.ATTO))
+        .max(new Decimal(0))
+    const yAmount = liquidity.mul(priceSqrt.sub(priceLeftBoundSqrt))
+
+    return [
+        xAmount.floor().toDecimalPlaces(xDivisibility),
+        yAmount.floor().toDecimalPlaces(yDivisibility),
+    ]
+}
+
+// Function to calculate input amount net
+function inputAmountNet(
+    inputAmount: Decimal,
+    inputFeeRate: Decimal,
+    feeProtocolShare: Decimal,
+    divisibility: number
+): [Decimal, Decimal, Decimal] {
+    const inputAmountGross = new Decimal(inputAmount)
+    const inputFeeTotal = inputAmountGross
+        .mul(inputFeeRate)
+        .ceil()
+        .toDecimalPlaces(divisibility)
+    const protocolFeeInput = inputFeeTotal
+        .mul(feeProtocolShare)
+        .floor()
+        .toDecimalPlaces(divisibility)
+    const inputFeeLp = inputFeeTotal.sub(protocolFeeInput)
+    const inputAmountNet = inputAmount.sub(inputFeeTotal)
+
+    if (inputAmountNet.lte(0)) {
+        throw new Error('Input amount net needs to be positive!')
+    }
+
+    return [inputAmountNet, inputFeeLp, protocolFeeInput]
+}
+
+// Function to calculate new price
+function newPrice(
+    swapType: SwapType,
+    liquidity: Decimal,
+    priceSqrt: Decimal,
+    inputAmount: Decimal,
+    inputDivisibility: number
+): Decimal {
+    const inputAmountAdjusted = inputAmount
+        .sub(new Decimal(10).pow(-inputDivisibility))
+        .max(new Decimal(0))
+
+    switch (swapType) {
+        case SwapType.BuyX:
+            return inputAmountAdjusted
+                .div(liquidity)
+                .add(priceSqrt)
+                .max(priceSqrt)
+        case SwapType.SellX:
+            return liquidity
+                .mul(priceSqrt)
+                .add(Decimal.ATTO)
+                .div(liquidity.add(inputAmountAdjusted.mul(priceSqrt)))
+                .add(Decimal.ATTO)
+                .min(priceSqrt)
+    }
+}

@@ -1,4 +1,5 @@
 import { POOLS_CACHE } from '..'
+import type { Pool } from '../getAllPools'
 import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
@@ -34,6 +35,7 @@ export interface Strategy {
     ltvLiquidation: string
     optimalLtv: string
     poolType?: string
+    poolInfo: Pool
 }
 
 export interface AssetPrice {
@@ -77,7 +79,7 @@ export interface RootMarketStats {
     }
 }
 
-export async function getRootMarketStats(): Promise<RootMarketStats> {
+export async function getRootMarketStats(): Promise<RootMarketStats | null> {
     try {
         const response = await fetch(
             'https://backend-prod.rootfinance.xyz/api/markets/stats',
@@ -90,7 +92,8 @@ export async function getRootMarketStats(): Promise<RootMarketStats> {
         )
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.error(`HTTP error! status: ${response.status}`)
+            return null
         }
 
         return await response.json()
@@ -145,7 +148,7 @@ export interface SurgeStats {
     }
 }
 
-export async function getSurgeStats(): Promise<SurgeStats> {
+export async function getSurgeStats(): Promise<SurgeStats | null> {
     try {
         const response = await fetch('https://api.surge.trade/stats', {
             method: 'GET',
@@ -155,7 +158,8 @@ export async function getSurgeStats(): Promise<SurgeStats> {
         })
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.log(`HTTP error! status: ${response.status}`)
+            return null
         }
 
         const data: SurgeStats = await response.json()
@@ -171,6 +175,8 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(
 ): Promise<Strategy | null> {
     try {
         const surgeStats = await getSurgeStats()
+
+        if (!surgeStats) return null
 
         const surgeLpApy = surgeStats.apy.value * 100 // Convert to percentage
         const xrdLendingApy = stats.assets.radix.lendingAPY
@@ -322,6 +328,7 @@ async function getLPIncentiveStrategies(
                 currentPrice: pool.current_price,
                 buyingSymbol: pool.left_alt,
                 askPrice: pool.ask_price,
+                poolInfo: pool,
             } as Strategy
         })
     } catch (error) {
@@ -329,12 +336,16 @@ async function getLPIncentiveStrategies(
             'Error in getRootFinanceLendXrdBorrowUsdProvideSurgeLP:',
             error
         )
-        throw new Error('Failed to fetch LP incentive strategies')
+        return []
     }
 }
 
 export async function getStrategies() {
     const stats = await getRootMarketStats()
+
+    if (!stats) {
+        return []
+    }
 
     return [
         await getRootFinanceLendXrdBorrowUsdProvideSurgeLP(stats),
@@ -354,7 +365,9 @@ export async function getExecuteStrategyManifest(
     buyToken: string | null,
     component: string | null,
     leftPercentage: number | null,
-    rightPercentage: number | null
+    rightPercentage: number | null,
+    xTokenAmount: string | null,
+    yTokenAmount: string | null
 ) {
     const strategy =
         STRATEGY_MANIFEST[strategyId as keyof typeof STRATEGY_MANIFEST]
@@ -369,7 +382,9 @@ export async function getExecuteStrategyManifest(
             buyToken,
             component,
             leftPercentage,
-            rightPercentage
+            rightPercentage,
+            xTokenAmount,
+            yTokenAmount
         ),
     }
 }

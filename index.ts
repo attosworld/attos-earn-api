@@ -71,7 +71,7 @@ const corsHeaders = {
 
 // Cache for pools
 export let POOLS_CACHE: Pool[] | null = null
-const CACHE_DURATION = 30000
+const CACHE_DURATION = 60000
 
 // Function to update the cache
 async function updatePoolsCache() {
@@ -142,6 +142,8 @@ Bun.serve({
             const component = url.searchParams.get('component')
             const leftPercentage = url.searchParams.get('min_percentage')
             const rightPercentage = url.searchParams.get('max_percentage')
+            const xTokenAmount = url.searchParams.get('x_token_amount')
+            const yTokenAmount = url.searchParams.get('y_token_amount')
 
             if (!strategyId) {
                 return new Response(
@@ -209,7 +211,9 @@ Bun.serve({
                         buyToken,
                         component,
                         leftPercentage ? +leftPercentage : null,
-                        rightPercentage ? +rightPercentage : null
+                        rightPercentage ? +rightPercentage : null,
+                        xTokenAmount,
+                        yTokenAmount
                     )
                 ),
                 {
