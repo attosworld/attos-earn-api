@@ -363,13 +363,13 @@ function processLPTransaction(
         relevantTokenChanges?.forEach((it) => {
             if (+it.balance_change < 0) {
                 investedAmount = investedAmount.plus(
-                    new Decimal(Math.abs(+it.balance_change)).times(
-                        tokenPrices[it.resource_address].tokenPriceUSD
-                    )
+                    new Decimal(it.balance_change)
+                        .abs()
+                        .times(tokenPrices[it.resource_address].tokenPriceUSD)
                 )
             } else {
                 investedAmount = investedAmount.minus(
-                    new Decimal(+it.balance_change).times(
+                    new Decimal(it.balance_change).times(
                         tokenPrices[it.resource_address].tokenPriceUSD
                     )
                 )
@@ -570,44 +570,52 @@ export async function getAccountLPPortfolio(address: string) {
     > = {}
 
     fungibleLps.forEach((token) => {
-        if (
-            token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Quote/) ||
-            token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Base/)
-        ) {
-            lps[token.resourceInfo.resourceAddress] = {
-                type: 'defiplaza',
-                balance: token.balance,
-            }
-        } else if (token.resourceInfo.metadata.name?.startsWith('Ociswap LP')) {
-            lps[token.resourceInfo.resourceAddress] = {
-                type: 'ociswap',
-                balance: token.balance,
+        if (+token.balance > 0) {
+            if (
+                token.resourceInfo.metadata.name?.match(
+                    /Defiplaza (.+) Quote/
+                ) ||
+                token.resourceInfo.metadata.name?.match(/Defiplaza (.+) Base/)
+            ) {
+                lps[token.resourceInfo.resourceAddress] = {
+                    type: 'defiplaza',
+                    balance: token.balance,
+                }
+            } else if (
+                token.resourceInfo.metadata.name?.startsWith('Ociswap LP')
+            ) {
+                lps[token.resourceInfo.resourceAddress] = {
+                    type: 'ociswap',
+                    balance: token.balance,
+                }
             }
         }
     })
 
     for (const token of nftLps) {
-        if (token.resourceInfo.metadata.name?.startsWith('Ociswap LP')) {
-            const split = token.resourceInfo.metadata.infoUrl?.split(
-                '/'
-            ) as string[]
-            const pair = await gatewayApiEzMode.state.getComponentInfo(
-                split[split.length - 1]
-            )
-            const { x_address, y_address } =
-                pair.metadata.metadataExtractor.getMetadataValuesBatch({
-                    x_address: 'GlobalAddress',
-                    y_address: 'GlobalAddress',
-                }) as { x_address: string; y_address: string }
+        if (token.nftBalance.length) {
+            if (token.resourceInfo.metadata.name?.startsWith('Ociswap LP')) {
+                const split = token.resourceInfo.metadata.infoUrl?.split(
+                    '/'
+                ) as string[]
+                const pair = await gatewayApiEzMode.state.getComponentInfo(
+                    split[split.length - 1]
+                )
+                const { x_address, y_address } =
+                    pair.metadata.metadataExtractor.getMetadataValuesBatch({
+                        x_address: 'GlobalAddress',
+                        y_address: 'GlobalAddress',
+                    }) as { x_address: string; y_address: string }
 
-            lps[token.resourceInfo.resourceAddress] = {
-                type: 'ociswap_v2',
-                nftInfo: {
-                    nfts: token.nftBalance,
-                    component: split[split.length - 1],
-                    left_token: x_address,
-                    right_token: y_address,
-                },
+                lps[token.resourceInfo.resourceAddress] = {
+                    type: 'ociswap_v2',
+                    nftInfo: {
+                        nfts: token.nftBalance,
+                        component: split[split.length - 1],
+                        left_token: x_address,
+                        right_token: y_address,
+                    },
+                }
             }
         }
     }
@@ -615,8 +623,6 @@ export async function getAccountLPPortfolio(address: string) {
     const strategyTxs = liquidityPoolTxs.filter((tx) => tx.strategy)
 
     const rootFinancePoolState = await getRootFinancePoolState()
-
-    if (!rootFinancePoolState) return []
 
     const portfolioPnL: PoolPortfolioItem[] = (
         await Promise.all([
@@ -628,18 +634,22 @@ export async function getAccountLPPortfolio(address: string) {
                     underlyingTokens,
                     tokenPrices
                 )
-                const investedAmount = liquidityPoolTxs.reduce(
-                    (total, tx) =>
-                        total.plus(
-                            processLPTransaction(lpAddress, tx, tokenPrices)
-                        ),
-                    new Decimal(0)
-                )
+                const investedAmount = liquidityPoolTxs
+                    .filter((tx) => tx.liquidity !== undefined)
+                    .reduce(
+                        (total, tx) =>
+                            total.plus(
+                                processLPTransaction(lpAddress, tx, tokenPrices)
+                            ),
+                        new Decimal(0)
+                    )
 
                 const pnlAmount = currentValue.minus(investedAmount)
                 const pnlPercent = investedAmount.isZero()
                     ? '0'
                     : pnlAmount.div(investedAmount).times(100).toFixed(20)
+
+                console.log(currentValue, investedAmount, lpInfo)
 
                 return {
                     poolName: PAIR_NAME_CACHE[lpAddress]?.name,
@@ -667,6 +677,10 @@ export async function getAccountLPPortfolio(address: string) {
                 } as PoolPortfolioItem
             }),
             ...strategyTxs.map(async (tx, _, txs) => {
+                if (!rootFinancePoolState) {
+                    return
+                }
+
                 const strategyTx = await processStrategyTransaction(
                     tx,
                     tokenPrices,

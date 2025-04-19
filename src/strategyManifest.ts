@@ -18,6 +18,7 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
     SUSD_RESOURCE_ADDRESS,
+    DFP2_RESOURCE_ADDRESS,
 } from './resourceAddresses'
 
 export async function handleOciswapStrategy(
@@ -66,11 +67,17 @@ export async function handleOciswapStrategy(
             )
         }
 
+        if (poolDetails.pool_type === 'precision' && !xTokenAmount) {
+            return ''
+        }
+
         const swapPreview = await getOciswapSwapPreview(
             poolDetails.y.token.address,
             '',
             poolDetails.x.token.address,
-            xrdForX.div(poolDetails.x.price.token.now).toFixed(18)
+            poolDetails.pool_type === 'precision'
+                ? xTokenAmount || '0'
+                : xrdForX.div(poolDetails.x.price.token.now).toFixed(18)
         )
 
         console.log('swapPreview ', swapPreview)
@@ -78,13 +85,6 @@ export async function handleOciswapStrategy(
         if (!swapPreview) {
             return ''
         }
-
-        console.log(
-            'xRatio ',
-            totalBorrowedXrd,
-            swapPreview?.input_amount.xrd,
-            totalBorrowedXrd.minus(swapPreview?.input_amount.xrd).toFixed(18)
-        )
 
         const yTakeManifest = `TAKE_ALL_FROM_WORKTOP
 Address("${XRD_RESOURCE_ADDRESS}")
@@ -164,116 +164,99 @@ export async function handleDefiplazaStrategy(
         return ''
     }
 
-    const dfp2AmountManifest = xrdToDfp2AmountManifest(
-        'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68'
-    )
-        .replaceAll('{account}', account)
-        .replaceAll('{component}', component)
-        .replaceAll('{buyManifest}', buyFromDfpToken(poolDetails.dexComponent))
-        .replaceAll('{xusdcAmount}', usdAmount)
-        .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
-        .replaceAll('{buyToken}', buyToken)
-        .replaceAll('\n', ' ')
-
-    const dfp2Borrowed = await getDfp2Borrowable(dfp2AmountManifest)
-
-    console.log('borrowed DFP2:', dfp2Borrowed)
-    console.log('base price:', poolDetails.ask_price)
-    console.log('base tvl:', poolDetails.baseTvl)
-    console.log('quote tvl:', poolDetails.quoteTvl)
-    console.log('quote tvl:', poolDetails.pairState)
-
-    let ratio: Decimal = new Decimal(0)
-
-    const { pairState, basePoolState, quotePoolState } = poolDetails
-
-    if (pairState.shortage == 'BaseShortage') {
-        ratio = new Decimal(basePoolState.vaults[1].amount).div(
-            basePoolState.vaults[0].amount
+    if (poolDetails.right_token === DFP2_RESOURCE_ADDRESS) {
+        const dfp2AmountManifest = xrdToDfp2AmountManifest(
+            'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68'
         )
-    } else if (pairState.shortage == 'QuoteShortage') {
-        ratio = new Decimal(quotePoolState.vaults[1].amount).div(
-            quotePoolState.vaults[0].amount
+            .replaceAll('{account}', account)
+            .replaceAll('{component}', component)
+            .replaceAll(
+                '{buyManifest}',
+                buyFromDfpToken(poolDetails.dexComponent)
+            )
+            .replaceAll('{xusdcAmount}', usdAmount)
+            .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
+            .replaceAll('{buyToken}', buyToken)
+            .replaceAll('\n', ' ')
+
+        const dfp2Borrowed = await getDfp2Borrowable(dfp2AmountManifest)
+
+        console.log('borrowed DFP2:', dfp2Borrowed)
+        console.log('base price:', poolDetails.ask_price)
+        console.log('base tvl:', poolDetails.baseTvl)
+        console.log('quote tvl:', poolDetails.quoteTvl)
+        console.log('quote tvl:', poolDetails.pairState)
+
+        // let ratio: Decimal = new Decimal(0)
+
+        const { basePoolState, quotePoolState } = poolDetails
+
+        const basePrice = new Decimal(poolDetails.last_price)
+
+        const xAmount =
+            basePoolState.vaults[0].amount > 0 &&
+            basePoolState.vaults[1].amount > 0
+                ? new Decimal(basePoolState.vaults[0].amount).mul(basePrice)
+                : new Decimal(quotePoolState.vaults[1].amount).mul(basePrice)
+
+        const yAmount =
+            basePoolState.vaults[0].amount > 0 &&
+            basePoolState.vaults[1].amount > 0
+                ? new Decimal(basePoolState.vaults[1].amount).plus(
+                      quotePoolState.vaults[0].amount
+                  )
+                : new Decimal(quotePoolState.vaults[0].amount)
+
+        const xRatio = xAmount.div(xAmount.plus(yAmount))
+
+        const totalBorrowedDfp2 = new Decimal(dfp2Borrowed)
+
+        const dfp2ForBase = totalBorrowedDfp2.mul(xRatio)
+        // .minus(totalBorrowedDfp2.mul(xRatio).mul(0.02))
+
+        const addLiquidityManifest = createAddDefiplazaCalmLiquidityManifest(
+            poolDetails.component,
+            poolDetails.pairState.shortage
         )
+
+        const yTakeManifest = `TAKE_ALL_FROM_WORKTOP
+                            Address("${poolDetails.right_token}")
+                            Bucket("xrdSide");`
+
+        console.log('xAmount ', xAmount)
+        console.log('xRatio ', xRatio)
+        console.log('dfp2forbase ', dfp2ForBase)
+        console.log('remaining ', totalBorrowedDfp2.minus(dfp2ForBase))
+
+        const m = manifest
+            .replaceAll('{account}', account)
+            .replaceAll('{component}', component)
+            .replaceAll(
+                '{buyManifest}',
+                poolDetails.right_token !== DFP2_RESOURCE_ADDRESS
+                    ? ''
+                    : buyFromDfpToken(poolDetails.dexComponent)
+            )
+            .replaceAll('{xusdcAmount}', usdAmount)
+            .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
+            .replaceAll('{buyTokenAmount}', dfp2ForBase.toFixed(18))
+            .replaceAll('{yTakeManifest}', yTakeManifest)
+            .replaceAll('{addLiquidityManifest}', addLiquidityManifest)
+            .replaceAll('{buyToken}', buyToken)
+            .replaceAll(
+                '{repayRemainingManifest}',
+                `CALL_METHOD
+                                Address("${account}")
+                                "deposit_batch"
+                                Array<Bucket>(
+                                    Bucket("nft")
+                                );`
+            )
+            .replaceAll('\n', ' ')
+
+        return m
     }
-
-    const basePrice = new Decimal(poolDetails.ask_price)
-
-    const totalBorrowedDfp2 = new Decimal(dfp2Borrowed)
-
-    const baseToDfp2 = new Decimal(poolDetails.baseTvl).mul(basePrice)
-
-    const quoteToDfp2 = new Decimal(poolDetails.quoteTvl)
-
-    const baseRatio = baseToDfp2.div(baseToDfp2.plus(poolDetails.quoteTvl))
-
-    const quoteRatio = quoteToDfp2.div(baseToDfp2.plus(poolDetails.quoteTvl))
-
-    // total borrowed dfp2 to base token amount required
-    const dfp2ForBase = totalBorrowedDfp2.mul(baseRatio)
-    const dfp2ForQuote = totalBorrowedDfp2.mul(quoteRatio)
-
-    const v = calculateOptimalLiquidity(
-        totalBorrowedDfp2,
-        new Decimal(poolDetails.baseTvl).div(
-            new Decimal(poolDetails.baseTvl).plus(poolDetails.quoteTvl)
-        )
-    )
-
-    console.log('vibe ai output', v)
-
-    console.log(
-        'base ratio ',
-        ratio,
-        dfp2ForBase
-            .mul(basePrice)
-            .div(dfp2ForBase.mul(basePrice).plus(dfp2ForQuote))
-    )
-
-    console.log(baseRatio, quoteRatio, dfp2ForBase, dfp2ForQuote)
-
-    const addLiquidityManifest = createAddDefiplazaCalmLiquidityManifest(
-        poolDetails.component,
-        poolDetails.pairState.shortage
-    )
-
-    const yTakeManifest = `TAKE_ALL_FROM_WORKTOP
-Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
-Bucket("xrdSide");`
-
-    const buyTokenFromDfp2Amount =
-        pairState.shortage === 'QuoteShortage'
-            ? dfp2ForQuote.toFixed(18)
-            : dfp2ForBase.toFixed(18)
-
-    console.log(
-        'buyTokenFromDfp2Amount:',
-        pairState.shortage,
-        buyTokenFromDfp2Amount
-    )
-
-    const m = manifest
-        .replaceAll('{account}', account)
-        .replaceAll('{component}', component)
-        .replaceAll('{buyManifest}', buyFromDfpToken(poolDetails.dexComponent))
-        .replaceAll('{xusdcAmount}', usdAmount)
-        .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
-        .replaceAll('{buyTokenAmount}', v.xTokensToSell.toFixed(18))
-        .replaceAll('{yTakeManifest}', yTakeManifest)
-        .replaceAll('{addLiquidityManifest}', addLiquidityManifest)
-        .replaceAll('{buyToken}', buyToken)
-        .replaceAll(
-            '{repayRemainingManifest}',
-            `CALL_METHOD
-Address("${account}")
-"deposit_batch"
-Array<Bucket>(
-Bucket("nft")
-);`
-        )
-        .replaceAll('\n', ' ')
-
-    return m
+    return ''
 }
 
 export const STRATEGY_MANIFEST: Record<
@@ -291,8 +274,8 @@ export const STRATEGY_MANIFEST: Record<
             component: string | null,
             leftPercentage: number | null,
             rightPercentage: number | null,
-            xTokenAmount: number | null,
-            yTokenAmount: number | null
+            xTokenAmount: string | null,
+            yTokenAmount: string | null
         ) => Promise<string>
     }
 > = {
@@ -649,42 +632,4 @@ Address("${account}")
 Expression("ENTIRE_WORKTOP")
 ;
 `
-}
-
-interface LiquidityResult {
-    xTokensToKeep: Decimal
-    xTokensToSell: Decimal
-    yTokensToAcquire: Decimal
-}
-
-function calculateOptimalLiquidity(
-    totalXTokens: Decimal,
-    desiredRatio: Decimal
-): LiquidityResult {
-    // desiredRatio is the ratio of X tokens to Y tokens we want in the pool
-    // For example, if desiredRatio is 0.5, we want 1 X token for every 2 Y tokens
-
-    // Calculate the square root of the ratio
-    const sqrtRatio = desiredRatio.sqrt()
-
-    // Calculate the optimal amounts
-    const xTokensToKeep = totalXTokens
-        .mul(sqrtRatio)
-        .div(new Decimal(1).plus(sqrtRatio))
-    const yTokensToAcquire = xTokensToKeep.div(desiredRatio)
-
-    // Calculate how many X tokens need to be sold
-    const xTokensToSell = totalXTokens.minus(xTokensToKeep)
-
-    return {
-        xTokensToKeep,
-        xTokensToSell,
-        yTokensToAcquire,
-    }
-}
-
-export function getPoolComposition(leftBound: number, rightBound: number) {
-    return new Decimal(leftBound)
-        .abs()
-        .div(new Decimal(leftBound).abs().plus(rightBound).abs())
 }

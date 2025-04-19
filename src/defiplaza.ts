@@ -135,6 +135,7 @@ export interface VolumeAndTokenMetadata {
     quoteTvl: number
     ask_price: number
     bid_price: number
+    last_price: number
     alr_24h: number
     alr_7d: number
     tvl_usd: number
@@ -142,6 +143,7 @@ export interface VolumeAndTokenMetadata {
     volume_7d: number
     left_alt: string
     right_alt: string
+    right_token: string
     left_icon: string
     right_icon: string
     left_name: string
@@ -182,6 +184,7 @@ export async function getVolumeAndTokenMetadata(
                 quoteTvl: data.pair.quoteTVL,
                 ask_price: data.pair.askPrice,
                 bid_price: data.pair.bidPrice,
+                last_price: data.pair.lastPrice,
                 alr_24h: (data.pair.baseAPY + data.pair.quoteAPY) * 100,
                 alr_7d: (data.pair.baseAPY7D + data.pair.quoteAPY7D) * 100,
                 tvl_usd: data.pair.tvlUSD,
@@ -195,6 +198,7 @@ export async function getVolumeAndTokenMetadata(
                 right_icon: data.baseToken.iconUrl,
                 left_name: data.baseToken.name,
                 right_name: data.baseToken.name,
+                right_token: data.pair.quoteToken,
                 baseLPToken: data.pair.baseLPToken,
                 quoteLPToken: data.pair.quoteLPToken,
                 pairState: data.pairState,
@@ -288,6 +292,32 @@ CALL_METHOD
   "swap"
   Bucket("dfp2")
   Address("{buyToken}")
+;
+`
+}
+
+export function buyFromDfp(dexAdddress: string, tokenBuy: string): string {
+    return `
+TAKE_ALL_FROM_WORKTOP
+    Address("${XRD_RESOURCE_ADDRESS}")
+    Bucket("xrd")
+;
+CALL_METHOD
+  Address("${dexAdddress}")
+  "swap"
+  Bucket("xrd")
+  Address("${tokenBuy}")
+;
+TAKE_FROM_WORKTOP
+  Address("${tokenBuy}")
+  Decimal("{buyTokenAmount}")
+  Bucket("dfp2")
+;
+CALL_METHOD
+  Address("${dexAdddress}")
+  "swap"
+  Bucket("dfp2")
+  Address("${tokenBuy}")
 ;
 `
 }

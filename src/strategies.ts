@@ -1,6 +1,7 @@
 import { POOLS_CACHE } from '..'
 import type { Pool } from '../getAllPools'
 import {
+    DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
@@ -35,7 +36,7 @@ export interface Strategy {
     ltvLiquidation: string
     optimalLtv: string
     poolType?: string
-    poolInfo: Pool
+    poolInfo?: Pool
 }
 
 export interface AssetPrice {
@@ -243,14 +244,30 @@ async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(
     }
 }
 
-async function getLPIncentiveStrategies(
-    stats: RootMarketStats
+async function getLPIncentiveAndHighBonusStrategies(
+    stats: RootMarketStats,
+    prices: RootMarketPrices
 ): Promise<Strategy[]> {
     try {
-        const pools =
-            POOLS_CACHE?.filter(
-                (p) => p.boosted && p.left_alt && p.right_alt
-            ) || []
+        const pools = [
+            ...(POOLS_CACHE?.filter(
+                (p) =>
+                    p.boosted &&
+                    p.left_alt &&
+                    p.right_alt &&
+                    p.sub_type !== 'precision'
+            ) || []),
+            ...(POOLS_CACHE?.filter((p) => p.left_alt && p.right_alt)
+                .slice(0, 30)
+                .filter(
+                    (p) =>
+                        !p.boosted &&
+                        p.type !== 'defiplaza' &&
+                        p.right_token !== DFP2_RESOURCE_ADDRESS &&
+                        p.sub_type !== 'precision'
+                )
+                .sort((a, b) => a.bonus_7d - b.bonus_7d) || []),
+        ]
 
         return pools.map((pool) => {
             const usdLendingApy = stats.assets['usd-coin'].lendingAPY
@@ -281,6 +298,10 @@ async function getLPIncentiveStrategies(
                         icon: 'https://assets.radixdlt.com/icons/icon-xrd.png',
                         label: 'Borrow XRD',
                     },
+                    pool.type === 'defiplaza' && {
+                        icon: 'https://radix.defiplaza.net/assets/img/babylon/defiplaza-icon.png',
+                        label: 'Swap for DFP2',
+                    },
                     {
                         icon: pool.left_icon,
                         label: `Swap for ${pool.left_alt}`,
@@ -289,14 +310,14 @@ async function getLPIncentiveStrategies(
                         icon: pool.left_icon,
                         label: `Add LP to ${pool.name}`,
                     },
-                ],
+                ].filter(Boolean),
                 requiredAssets: [
                     {
                         resource_address: XUSDC_RESOURCE_ADDRESS,
                         symbol: 'xUSDC',
                     },
                 ],
-                rewardTokens: [pool.left_alt],
+                rewardTokens: pool.boosted ? [pool.left_alt] : [],
                 totalRewards: {
                     value: estimatedTotalApy,
                     type: 'APY',
@@ -329,6 +350,9 @@ async function getLPIncentiveStrategies(
                 buyingSymbol: pool.left_alt,
                 askPrice: pool.ask_price,
                 poolInfo: pool,
+                lendingPriceUsd: prices.prices.find(
+                    (p) => p.assetName === XRD_RESOURCE_ADDRESS
+                )?.assetPrice,
             } as Strategy
         })
     } catch (error) {
@@ -341,15 +365,18 @@ async function getLPIncentiveStrategies(
 }
 
 export async function getStrategies() {
-    const stats = await getRootMarketStats()
+    const [stats, prices] = await Promise.all([
+        getRootMarketStats(),
+        getRootMarketPrices(),
+    ])
 
-    if (!stats) {
+    if (!stats || !prices) {
         return []
     }
 
     return [
         await getRootFinanceLendXrdBorrowUsdProvideSurgeLP(stats),
-        ...(await getLPIncentiveStrategies(stats)),
+        ...(await getLPIncentiveAndHighBonusStrategies(stats, prices)),
     ]
         .filter(Boolean)
         .sort((a, b) => {
