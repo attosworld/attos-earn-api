@@ -1,17 +1,17 @@
-# fly.toml app configuration file generated for attos-earn-api-bitter-flower-6326 on 2025-03-29T22:02:21Z
+# fly.toml app configuration file generated for attos-earn-api-staging on 2025-04-25T23:04:31Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'attos-earn-api'
-primary_region = 'ams'
+app = 'attos-earn-api-staging'
+primary_region = 'lhr'
 
 [build]
 
 [http_service]
-  internal_port = 3000
+  internal_port = 8080
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
   processes = ['app']
@@ -20,3 +20,4 @@ primary_region = 'ams'
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 2048
