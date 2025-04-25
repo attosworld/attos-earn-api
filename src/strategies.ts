@@ -1,4 +1,5 @@
 import { POOLS_CACHE } from '..'
+import { previewTx } from '../getAccountLPPortfolio'
 import type { Pool } from '../getAllPools'
 import {
     DFP2_RESOURCE_ADDRESS,
@@ -93,7 +94,9 @@ export async function getRootMarketStats(): Promise<RootMarketStats | null> {
         )
 
         if (!response.ok) {
-            console.error(`HTTP error! status: ${response.status}`)
+            console.error(
+                `getRootMarketStats : HTTP error! status: ${response.status}`
+            )
             return null
         }
 
@@ -159,7 +162,9 @@ export async function getSurgeStats(): Promise<SurgeStats | null> {
         })
 
         if (!response.ok) {
-            console.log(`HTTP error! status: ${response.status}`)
+            console.log(
+                `getSurgeStats : HTTP error! status: ${response.status}`
+            )
             return null
         }
 
@@ -267,6 +272,11 @@ async function getLPIncentiveAndHighBonusStrategies(
                         p.sub_type !== 'precision'
                 )
                 .sort((a, b) => a.bonus_7d - b.bonus_7d) || []),
+            // ...(POOLS_CACHE?.filter(
+            //     (p) => p.sub_type === 'single'
+            //     // p.bonus_7d >= 5 &&
+            //     // p.volume_7d >= 1000
+            // ).sort((a, b) => a.bonus_7d - b.bonus_7d) || []),
         ]
 
         return pools.map((pool) => {
@@ -287,7 +297,7 @@ async function getLPIncentiveAndHighBonusStrategies(
 
             return {
                 id,
-                name: `Root Points, Yield ${pool.left_alt} in ${provider}`,
+                name: `Root Points, Yield ${pool.left_alt ? pool.left_alt : pool.right_alt} in ${provider}`,
                 description: `Lend xUSDC, borrow XRD, swap for ${pool.left_alt}, provide LP to ${provider}`,
                 steps: [
                     {
@@ -298,16 +308,33 @@ async function getLPIncentiveAndHighBonusStrategies(
                         icon: 'https://assets.radixdlt.com/icons/icon-xrd.png',
                         label: 'Borrow XRD',
                     },
-                    pool.type === 'defiplaza' && {
-                        icon: 'https://radix.defiplaza.net/assets/img/babylon/defiplaza-icon.png',
-                        label: 'Swap for DFP2',
+                    pool.type === 'defiplaza' &&
+                        pool.sub_type === 'single' &&
+                        pool.left_alt !== 'XRD' &&
+                        pool.right_alt !== 'XRD' && {
+                            icon: 'https://radix.defiplaza.net/assets/img/babylon/defiplaza-icon.png',
+                            label: 'Swap for DFP2',
+                        },
+                    pool.sub_type !== 'single' && {
+                        icon:
+                            pool.left_alt === 'XRD'
+                                ? pool.right_icon
+                                : pool.left_icon,
+                        label: `Swap for ${pool.left_alt === 'XRD' ? pool.right_alt : pool.left_alt}`,
                     },
+                    pool.sub_type === 'single' &&
+                        pool.left_alt &&
+                        !pool.right_alt &&
+                        (pool.left_alt !== 'XRD' ||
+                            pool.right_alt !== 'XRD') && {
+                            icon: pool.right_icon || pool.left_icon,
+                            label: `Swap for ${pool.right_alt || pool.left_alt}`,
+                        },
                     {
-                        icon: pool.left_icon,
-                        label: `Swap for ${pool.left_alt}`,
-                    },
-                    {
-                        icon: pool.left_icon,
+                        icon:
+                            pool.left_alt === 'XRD'
+                                ? pool.right_icon
+                                : pool.left_icon || pool.right_icon,
                         label: `Add LP to ${pool.name}`,
                     },
                 ].filter(Boolean),
@@ -378,7 +405,7 @@ export async function getStrategies() {
         await getRootFinanceLendXrdBorrowUsdProvideSurgeLP(stats),
         ...(await getLPIncentiveAndHighBonusStrategies(stats, prices)),
     ]
-        .filter(Boolean)
+        .filter((p) => !!p && p.totalRewards.value > 0)
         .sort((a, b) => {
             return +(b?.totalRewards.value || 0) - (a?.totalRewards.value || 0)
         })
@@ -399,19 +426,38 @@ export async function getExecuteStrategyManifest(
     const strategy =
         STRATEGY_MANIFEST[strategyId as keyof typeof STRATEGY_MANIFEST]
 
+    const manifestResponse = await strategy.generateManifest(
+        strategyId,
+        strategy.manifest,
+        accountAddress,
+        xrd.toString(),
+        ltv,
+        buyToken,
+        component,
+        leftPercentage,
+        rightPercentage,
+        xTokenAmount,
+        yTokenAmount
+    )
+
+    console.log('manifest ', manifestResponse)
+
+    const previewTxResponse = await previewTx(manifestResponse).catch((e) => {
+        console.log('Error preview ', e)
+        return null
+    })
+
+    if (
+        !previewTxResponse ||
+        (previewTxResponse.receipt as { error_message?: string }).error_message
+    ) {
+        console.log(previewTxResponse)
+        return {
+            manifest: '',
+        }
+    }
+
     return {
-        manifest: await strategy.generateManifest(
-            strategyId,
-            strategy.manifest,
-            accountAddress,
-            xrd.toString(),
-            ltv,
-            buyToken,
-            component,
-            leftPercentage,
-            rightPercentage,
-            xTokenAmount,
-            yTokenAmount
-        ),
+        manifest: manifestResponse,
     }
 }

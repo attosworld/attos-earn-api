@@ -5,6 +5,7 @@ import {
     xrdToDfp2AmountManifest,
     buyFromDfpToken,
     createAddDefiplazaCalmLiquidityManifest,
+    singleSidedXrdToDfp2AmountManifest,
 } from './defiplaza'
 import {
     getOciswapPoolDetails,
@@ -45,7 +46,21 @@ export async function handleOciswapStrategy(
     ) {
         const totalBorrowedXrd = new Decimal(borrowXrdAmount)
 
-        const xrdForX = totalBorrowedXrd.mul(0.5)
+        const shouldFlip = poolDetails.x.token.address === XRD_RESOURCE_ADDRESS
+
+        const ratio = shouldFlip
+            ? new Decimal(poolDetails.y.liquidity.xrd.now).div(
+                  new Decimal(poolDetails.y.liquidity.xrd.now).plus(
+                      poolDetails.x.liquidity.xrd.now
+                  )
+              )
+            : new Decimal(poolDetails.x.liquidity.xrd.now).div(
+                  new Decimal(poolDetails.y.liquidity.xrd.now).plus(
+                      poolDetails.x.liquidity.xrd.now
+                  )
+              )
+
+        const xrdForX = totalBorrowedXrd.mul(ratio)
 
         let addLiquidityManifest
 
@@ -72,15 +87,19 @@ export async function handleOciswapStrategy(
         }
 
         const swapPreview = await getOciswapSwapPreview(
-            poolDetails.y.token.address,
+            shouldFlip
+                ? poolDetails.x.token.address
+                : poolDetails.y.token.address,
             '',
-            poolDetails.x.token.address,
+            shouldFlip
+                ? poolDetails.y.token.address
+                : poolDetails.x.token.address,
             poolDetails.pool_type === 'precision'
                 ? xTokenAmount || '0'
-                : xrdForX.div(poolDetails.x.price.token.now).toFixed(18)
+                : shouldFlip
+                  ? xrdForX.mul(poolDetails.y.price.token.now).toFixed(18)
+                  : xrdForX.mul(poolDetails.x.price.token.now).toFixed(18)
         )
-
-        console.log('swapPreview ', swapPreview)
 
         if (!swapPreview) {
             return ''
@@ -101,7 +120,12 @@ Bucket("xrdSide");`
             .replaceAll('{dexComponent}', component)
             .replaceAll('{xusdcAmount}', usdAmount)
             .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
-            .replaceAll('{buyToken}', poolDetails.x.token.address)
+            .replaceAll(
+                '{buyToken}',
+                shouldFlip
+                    ? poolDetails.y.token.address
+                    : poolDetails.x.token.address
+            )
             .replaceAll('{buyTokenAmount}', swapPreview.input_amount.xrd)
             .replaceAll(
                 '{addLiquidityManifest}',
@@ -117,7 +141,7 @@ Bucket("xrdSide");`
 
         const remaining = await getRemainingXrd(finalManifest)
 
-        const f = manifest
+        return manifest
             .replaceAll('{account}', account)
             .replaceAll('{component}', component)
             .replaceAll('{yTakeManifest}', yTakeManifest)
@@ -128,7 +152,12 @@ Bucket("xrdSide");`
             .replaceAll('{dexComponent}', component)
             .replaceAll('{xusdcAmount}', usdAmount)
             .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
-            .replaceAll('{buyToken}', poolDetails.x.token.address)
+            .replaceAll(
+                '{buyToken}',
+                shouldFlip
+                    ? poolDetails.y.token.address
+                    : poolDetails.x.token.address
+            )
             .replaceAll('{buyTokenAmount}', xrdForX.toFixed(18))
             .replaceAll(
                 '{addLiquidityManifest}',
@@ -144,8 +173,6 @@ Bucket("xrdSide");`
             )
             .replaceAll('\n', ' ')
             .replaceAll('  ', ' ')
-
-        return f
     }
     return ''
 }
@@ -156,12 +183,50 @@ export async function handleDefiplazaStrategy(
     component: string,
     usdAmount: string,
     borrowXrdAmount: string,
-    buyToken: string
+    buyToken: string,
+    isSingleSided?: boolean
 ) {
     const poolDetails = await getVolumeAndTokenMetadata(buyToken)
 
     if (!poolDetails) {
         return ''
+    }
+
+    if (isSingleSided) {
+        const dfp2AmountManifest = xrdToDfp2AmountManifest(
+            'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68'
+        )
+            .replaceAll('{account}', account)
+            .replaceAll('{component}', component)
+            .replaceAll(
+                '{buyManifest}',
+                buyFromDfpToken(poolDetails.dexComponent)
+            )
+            .replaceAll('{xusdcAmount}', usdAmount)
+            .replaceAll('{borrowXrdAmount}', borrowXrdAmount)
+            .replaceAll('{buyToken}', buyToken)
+            .replaceAll('\n', ' ')
+
+        const dfp2Borrowed = await getDfp2Borrowable(dfp2AmountManifest)
+
+        if (poolDetails?.single.side === 'base') {
+            return singleSidedXrdToDfp2AmountManifest({
+                account,
+                dexAddress: poolDetails.dexComponent,
+                poolComponentAddress: poolDetails.component,
+                tokenSwap: buyToken,
+                borrowAmount: dfp2Borrowed,
+                usdAmount,
+            })
+        } else {
+            return singleSidedXrdToDfp2AmountManifest({
+                account,
+                dexAddress: poolDetails.dexComponent,
+                poolComponentAddress: poolDetails.component,
+                borrowAmount: dfp2Borrowed,
+                usdAmount,
+            })
+        }
     }
 
     if (poolDetails.right_token === DFP2_RESOURCE_ADDRESS) {
@@ -202,17 +267,22 @@ export async function handleDefiplazaStrategy(
         const yAmount =
             basePoolState.vaults[0].amount > 0 &&
             basePoolState.vaults[1].amount > 0
-                ? new Decimal(basePoolState.vaults[1].amount).plus(
+                ? new Decimal(basePoolState.vaults[1].amount).lessThanOrEqualTo(
                       quotePoolState.vaults[0].amount
                   )
+                    ? new Decimal(basePoolState.vaults[1].amount).plus(
+                          quotePoolState.vaults[0].amount
+                      )
+                    : new Decimal(basePoolState.vaults[1].amount)
                 : new Decimal(quotePoolState.vaults[0].amount)
 
         const xRatio = xAmount.div(xAmount.plus(yAmount))
 
         const totalBorrowedDfp2 = new Decimal(dfp2Borrowed)
 
-        const dfp2ForBase = totalBorrowedDfp2.mul(xRatio)
-        // .minus(totalBorrowedDfp2.mul(xRatio).mul(0.02))
+        const dfp2ForBase = totalBorrowedDfp2
+            .mul(xRatio)
+            .minus(totalBorrowedDfp2.mul(xRatio).mul(0.02))
 
         const addLiquidityManifest = createAddDefiplazaCalmLiquidityManifest(
             poolDetails.component,
@@ -389,7 +459,7 @@ CALL_METHOD
             const borrowXrdAmount = (
                 xrdToUsd -
                 borrowUsdcLimit * xrdToUsd
-            ).toFixed(18)
+            ).toFixed(6)
 
             return manifest
                 .replaceAll('{account}', account)
@@ -527,7 +597,8 @@ CALL_METHOD
                     component,
                     usdAmount,
                     borrowXrdAmount,
-                    buyToken
+                    buyToken,
+                    /\(.+\)$/.test(id)
                 )
             }
             return ''

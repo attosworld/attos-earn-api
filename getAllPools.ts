@@ -7,6 +7,7 @@ import {
     type VolumeAndTokenMetadata,
 } from './src/defiplaza'
 import { ociswapPools as getOciswapPools } from './src/ociswap'
+import { tokensRequest } from './src/astrolescent'
 
 export interface Pool {
     type: string
@@ -34,12 +35,14 @@ export interface Pool {
     ask_price?: string
     boosted: boolean
     incentivised_lp_docs: string
+    volume_per_day?: number[]
 }
 
 export async function getAllPools(): Promise<Pool[]> {
     const [ociPools, dfpPools] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
+        tokensRequest(),
     ])
 
     if (!ociPools || !dfpPools) return []
@@ -204,6 +207,7 @@ export async function getAllPools(): Promise<Pool[]> {
                                 pool_type: 'double',
                                 sub_type: 'double',
                                 component: d.address,
+                                current_price: base?.ask_price,
                                 xRatio: xRatio,
                                 yRatio: yRatio,
                                 tvl: d.tvlUSD,
@@ -230,12 +234,15 @@ export async function getAllPools(): Promise<Pool[]> {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS[d.address].docs,
                                 }),
+                                classification_tags: [],
+                                volume_per_day: base?.volume_per_day,
                             },
                             {
                                 type: 'defiplaza',
                                 pool_type: 'single',
                                 sub_type: 'single',
                                 component: d.address,
+                                current_price: base?.ask_price,
                                 tvl: d.tvlUSD,
                                 xRatio: 0,
                                 yRatio: 0,
@@ -266,6 +273,7 @@ export async function getAllPools(): Promise<Pool[]> {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS[d.address].docs,
                                 }),
+                                volume_per_day: base?.volume_per_day,
                             } as Pool,
                         ]
                     })

@@ -1,9 +1,13 @@
-import type { NftInfo } from '@calamari-radix/gateway-ez-mode/dist/types'
+import type {
+    NftInfo,
+    ResourceInfo,
+} from '@calamari-radix/gateway-ez-mode/dist/types'
 import Decimal from 'decimal.js'
 import { gatewayApi, gatewayApiEzMode, PAIR_NAME_CACHE } from '.'
 import {
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     getAllAddLiquidityTxs,
+    OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST,
     OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     type EnhancedTransactionInfo,
 } from './getAllAddLiquidityTxs'
@@ -23,6 +27,11 @@ import {
     getRootFinancePoolState,
     type RootFinancePoolStateResponse,
 } from './src/rootFinance'
+import {
+    DFP2_RESOURCE_ADDRESS,
+    XRD_RESOURCE_ADDRESS,
+    XUSDC_RESOURCE_ADDRESS,
+} from './src/resourceAddresses'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -44,7 +53,10 @@ export function isDefiplazaLPInfo(
 }
 
 export function isOciswapLPInfo(info: UnderlyingTokens): info is OciswapLPInfo {
-    return info !== null && 'x_address' in info && 'y_address' in info
+    return (
+        (info !== null && 'x_address' in info && 'y_address' in info) ||
+        (info !== null && 'x_amount' in info && 'y_amount' in info)
+    )
 }
 
 export function isOciswapV2LPInfo(
@@ -255,19 +267,24 @@ export function astrolescentRequest(
     })
 }
 
+export interface LpInfo {
+    type: 'defiplaza' | 'ociswap' | 'ociswap_v2'
+    balance?: string
+    nftInfo?: {
+        nfts: NftInfo[]
+        component: string
+        left_token: string
+        right_token: string
+    }
+}
+
 async function getLPInfo(
     lpAddress: string,
-    lpInfo: {
-        type: 'defiplaza' | 'ociswap' | 'ociswap_v2'
-        balance?: string
-        nftInfo?: {
-            nfts: NftInfo[]
-            component: string
-            left_token: string
-            right_token: string
-        }
-    }
+    lpInfo: LpInfo | undefined
 ): Promise<UnderlyingTokens | undefined> {
+    if (!lpInfo) {
+        return
+    }
     if (lpInfo.type === 'defiplaza' && lpInfo.balance) {
         return await defiplazaLpInfo(lpAddress, lpInfo.balance)
     } else if (lpInfo.type === 'ociswap' && lpInfo.balance) {
@@ -295,10 +312,9 @@ async function getLPInfo(
 
 export type UnderlyingTokens =
     | OciswapLPInfo
-    | null
     | DefiPlazaLPInfo
-    | null
     | (OciswapLPInfo & { left_token: string; right_token: string })[]
+    | null
 
 function calculateCurrentValue(
     underlyingTokens: UnderlyingTokens,
@@ -379,6 +395,23 @@ function processLPTransaction(
     return investedAmount
 }
 
+export function mapLpType(lpMetatadata: ResourceInfo, balance: string) {
+    if (
+        lpMetatadata.metadata.name?.match(/Defiplaza (.+) Quote/) ||
+        lpMetatadata.metadata.name?.match(/Defiplaza (.+) Base/)
+    ) {
+        return {
+            type: 'defiplaza',
+            balance,
+        } as LpInfo
+    } else if (lpMetatadata.metadata.name?.startsWith('Ociswap LP')) {
+        return {
+            type: 'ociswap',
+            balance,
+        } as LpInfo
+    }
+}
+
 async function processStrategyTransaction(
     tx: CommittedTransactionInfo,
     tokenPrices: Record<string, TokenInfo>,
@@ -397,15 +430,13 @@ async function processStrategyTransaction(
 
         const xrdChange = tx.balance_changes?.fungible_balance_changes.find(
             (bc) =>
-                bc.resource_address ===
-                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.resource_address === XRD_RESOURCE_ADDRESS &&
                 bc.entity_address.startsWith('account_rdx')
         )
 
         const surgeLp = tx.balance_changes?.fungible_balance_changes.find(
             (bc) =>
-                bc.resource_address !==
-                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
                 bc.entity_address.startsWith('account_rdx')
         )
 
@@ -440,9 +471,7 @@ async function processStrategyTransaction(
                         .value as string
 
                     const ratio = rootFinancePoolState.states.find(
-                        (s) =>
-                            s.address ===
-                            'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
+                        (s) => s.address === XRD_RESOURCE_ADDRESS
                     )?.unit_to_asset_ratio
 
                     if (ratio) {
@@ -462,9 +491,7 @@ async function processStrategyTransaction(
                         .value as string
 
                     const ratio = rootFinancePoolState.states.find(
-                        (s) =>
-                            s.address ===
-                            'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
+                        (s) => s.address === XUSDC_RESOURCE_ADDRESS
                     )?.unit_to_asset_ratio
 
                     if (ratio) {
@@ -473,9 +500,8 @@ async function processStrategyTransaction(
                         ).div(ratio)
                         currentValue = currentValue.minus(
                             underlyingUsdAmount.times(
-                                tokenPrices[
-                                    'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
-                                ].tokenPriceXRD
+                                tokenPrices[XUSDC_RESOURCE_ADDRESS]
+                                    .tokenPriceXRD
                             )
                         )
                     }
@@ -499,8 +525,7 @@ async function processStrategyTransaction(
 
         const outAsset = tx.balance_changes?.fungible_balance_changes.find(
             (bc) =>
-                bc.resource_address !==
-                    'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd' &&
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
                 bc.entity_address.startsWith('account_rdx')
         )
 
@@ -526,20 +551,195 @@ async function processStrategyTransaction(
         return {
             currentValueXrd: currentValue,
             currentValueUsd: currentValue.times(
-                new Decimal(
-                    tokenPrices[
-                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                    ].tokenPriceUSD
-                )
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
             ),
             investedAmountXrd: investedAmount,
             investedAmountUsd: investedAmount.times(
-                new Decimal(
-                    tokenPrices[
-                        'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                    ].tokenPriceUSD
-                )
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
             ),
+            provider: `Root Finance, Surge`,
+            tx: tx.intent_hash,
+            closeManifest,
+        }
+    } else if (
+        OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST.every((method) =>
+            tx.manifest_instructions?.includes(method)
+        )
+    ) {
+        let investedAmount = new Decimal(0)
+        let currentValue = new Decimal(0)
+        let closeManifest: string = ''
+
+        const xusdChange = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address === XUSDC_RESOURCE_ADDRESS &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        const defiplazaOrOciswapLp =
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address !== XUSDC_RESOURCE_ADDRESS &&
+                    bc.resource_address !== XRD_RESOURCE_ADDRESS &&
+                    bc.resource_address != DFP2_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )
+
+        const rootNft = tx.balance_changes?.non_fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address ===
+                    'resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f' &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        let underlyingXrdAmount = new Decimal(0)
+        let underlyingUsdAmount = new Decimal(0)
+
+        if (!rootNft || !defiplazaOrOciswapLp) {
+            return null
+        }
+        const nft = await gatewayApi.state.getNonFungibleData(
+            rootNft?.resource_address,
+            rootNft.added
+        )
+        const data = nft[0].data?.programmatic_json
+
+        const lpMetatadata = await gatewayApiEzMode.state.getResourceInfo(
+            defiplazaOrOciswapLp.resource_address
+        )
+
+        const lpInfo = mapLpType(
+            lpMetatadata,
+            defiplazaOrOciswapLp.balance_change
+        )
+
+        const underlyingTokens = await getLPInfo(
+            lpInfo?.type === 'ociswap'
+                ? lpMetatadata.metadata.infoUrl?.split('/')[4] || ''
+                : defiplazaOrOciswapLp.resource_address,
+            lpInfo
+        )
+
+        if (lpMetatadata.metadata.infoUrl?.split('/')[4]) {
+            const componentMetadata =
+                await gatewayApiEzMode.state.getComponentInfo(
+                    lpMetatadata.metadata.infoUrl?.split('/')[4]
+                )
+
+            const { x_address, y_address } =
+                componentMetadata.metadata.metadataExtractor.getMetadataValuesBatch(
+                    {
+                        x_address: 'GlobalAddress',
+                        y_address: 'GlobalAddress',
+                    }
+                ) as { x_address: string; y_address: string }
+
+            ;(underlyingTokens as OciswapLPInfo).x_address = x_address
+
+            ;(underlyingTokens as OciswapLPInfo).y_address = y_address
+        }
+
+        if (!underlyingTokens) {
+            return null
+        }
+
+        const lpValue = calculateCurrentValue(underlyingTokens, tokenPrices)
+
+        console.log('lpValue', underlyingTokens, lpValue)
+        currentValue = currentValue.plus(
+            lpValue.mul(tokenPrices[XUSDC_RESOURCE_ADDRESS].tokenPriceXRD)
+        )
+
+        if (data?.kind === 'Tuple') {
+            const collaterals = data.fields.find(
+                (f) => f.field_name === 'collaterals'
+            )
+            const loans = data.fields.find((f) => f.field_name === 'loans')
+            if (
+                collaterals &&
+                'entries' in collaterals &&
+                collaterals.entries.length &&
+                'value' in collaterals.entries[0].value
+            ) {
+                const poolUnitXrdAmount = collaterals.entries[0].value
+                    .value as string
+
+                const ratio = rootFinancePoolState.states.find(
+                    (s) => s.address === XUSDC_RESOURCE_ADDRESS
+                )?.unit_to_asset_ratio
+
+                if (ratio) {
+                    underlyingXrdAmount = new Decimal(poolUnitXrdAmount).div(
+                        new Decimal(ratio)
+                    )
+                    currentValue = currentValue.add(underlyingXrdAmount)
+                }
+            }
+            if (
+                loans &&
+                'entries' in loans &&
+                loans.entries.length &&
+                'value' in loans.entries[0].value
+            ) {
+                const usdPoolUnitBorrowed = loans.entries[0].value
+                    .value as string
+
+                const ratio = rootFinancePoolState.states.find(
+                    (s) => s.address === XRD_RESOURCE_ADDRESS
+                )?.unit_to_asset_ratio
+
+                if (ratio) {
+                    underlyingUsdAmount = new Decimal(usdPoolUnitBorrowed).div(
+                        ratio
+                    )
+                    currentValue = currentValue.minus(
+                        underlyingUsdAmount.times(
+                            tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
+                        )
+                    )
+                }
+            }
+        }
+        closeManifest = CLOSE_STRATEGY_MANIFEST.replaceAll('{account}', address)
+            .replaceAll('{surgeLpAmount}', defiplazaOrOciswapLp.balance_change)
+            .replaceAll('{rootNftId}', rootNft.added[0])
+            .replaceAll(
+                '{lendAmount}',
+                underlyingXrdAmount.toDecimalPlaces(18).toString()
+            )
+
+        if (xusdChange) {
+            investedAmount = investedAmount.plus(
+                new Decimal(xusdChange.balance_change)
+                    .abs()
+                    .mul(tokenPrices[XUSDC_RESOURCE_ADDRESS].tokenPriceXRD)
+            )
+        }
+
+        if (
+            txs.find(
+                (tx) =>
+                    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every(
+                        (method) =>
+                            tx.manifest_instructions?.includes(method) || ''
+                    ) &&
+                    tx.manifest_instructions?.includes(rootNft?.added[0] || '')
+            )
+        ) {
+            investedAmount = new Decimal(0)
+        }
+
+        return {
+            currentValueXrd: currentValue,
+            currentValueUsd: currentValue.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            investedAmountXrd: investedAmount,
+            investedAmountUsd: investedAmount.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `Root Finance, ${lpInfo?.type || ''}`,
+            tx: tx.intent_hash,
             closeManifest,
         }
     }
@@ -649,8 +849,6 @@ export async function getAccountLPPortfolio(address: string) {
                     ? '0'
                     : pnlAmount.div(investedAmount).times(100).toFixed(20)
 
-                console.log(currentValue, investedAmount, lpInfo)
-
                 return {
                     poolName: PAIR_NAME_CACHE[lpAddress]?.name,
                     leftAlt: PAIR_NAME_CACHE[lpAddress]?.left_alt,
@@ -662,15 +860,11 @@ export async function getAccountLPPortfolio(address: string) {
                     currentValue: currentValue.toFixed(),
                     investedXrd: investedAmount.div(
                         new Decimal(
-                            tokenPrices[
-                                'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                            ].tokenPriceUSD
+                            tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
                         )
                     ),
                     currentValueXrd: currentValue.div(
-                        tokenPrices[
-                            'resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd'
-                        ].tokenPriceUSD
+                        tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
                     ),
                     pnl: pnlAmount.toFixed(),
                     pnlPercentage: pnlPercent,
@@ -696,7 +890,9 @@ export async function getAccountLPPortfolio(address: string) {
                     investedAmountUsd,
                     currentValueXrd,
                     currentValueUsd,
+                    provider,
                     closeManifest,
+                    tx: txid,
                 } = strategyTx
 
                 const pnlAmount = currentValueUsd.minus(investedAmountUsd)
@@ -705,12 +901,12 @@ export async function getAccountLPPortfolio(address: string) {
                     : pnlAmount.div(investedAmountUsd).times(100).toFixed(20)
 
                 return {
-                    poolName: `Root Finance Strategy (Epoch: ${tx.epoch})`,
+                    poolName: `Root Finance Strategy (${tx.intent_hash?.slice(0, 10)}...${tx.intent_hash?.slice(-5)})`,
                     leftAlt: '',
                     rightAlt: '',
                     leftIcon: 'https://assets.radixdlt.com/icons/icon-xrd.png',
                     rightIcon: 'https://app.rootfinance.xyz/favicon.ico',
-                    provider: 'Root Finance, Surge',
+                    provider,
                     invested: investedAmountUsd.toFixed(),
                     currentValue: currentValueUsd.toFixed(),
                     investedXrd: investedAmountXrd.toFixed(),
@@ -718,6 +914,7 @@ export async function getAccountLPPortfolio(address: string) {
                     pnl: pnlAmount.toFixed(),
                     pnlPercentage: pnlPercent,
                     strategy: true,
+                    tx: txid,
                     closeManifest,
                 } as PoolPortfolioItem
             }),
@@ -727,7 +924,7 @@ export async function getAccountLPPortfolio(address: string) {
     return portfolioPnL.filter(
         (pool) =>
             pool &&
-            ((+pool.invested || 0) > 1 ||
+            ((+pool.invested || 0) > 0 ||
                 (pool.strategy &&
                     +pool.invested != 0 &&
                     +pool.currentValue != 0))

@@ -34,6 +34,16 @@ export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
     'add_liquidity',
 ]
 
+export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
+    'charge_royalty',
+    'withdraw',
+    'contribute',
+    'create_cdp',
+    'borrow',
+    'swap',
+    'add_liquidity',
+]
+
 const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
     (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&
         !!tx.balance_changes?.fungible_fee_balance_changes.some(

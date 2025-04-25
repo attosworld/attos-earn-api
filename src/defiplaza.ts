@@ -161,6 +161,40 @@ export interface VolumeAndTokenMetadata {
         volume_24h: number
         volume_7d: number
     }
+    volume_per_day: number[]
+}
+
+function getLastSevenDaysVolume(
+    stats: Array<{ date: number; volumeUSD: number }>
+): number[] {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0) // Set to start of today
+    const sevenDaysAgo = new Date(now)
+    sevenDaysAgo.setDate(now.getDate() - 6) // 7 days including today
+
+    const volumeMap = new Map<number, number>()
+
+    // Initialize all 7 days with 0 volume
+    for (let i = 0; i < 7; i++) {
+        const date = new Date(sevenDaysAgo)
+        date.setDate(sevenDaysAgo.getDate() + i)
+        volumeMap.set(date.getTime(), 0)
+    }
+
+    // Fill in actual volumes where we have data
+    stats.forEach((stat) => {
+        const statDate = new Date(stat.date * 1000) // Convert seconds to milliseconds
+        statDate.setHours(0, 0, 0, 0)
+        const statTime = statDate.getTime()
+        if (volumeMap.has(statTime)) {
+            volumeMap.set(statTime, stat.volumeUSD)
+        }
+    })
+
+    // Convert map to array, sorted from most recent to oldest
+    return Array.from(volumeMap.entries())
+        .sort((a, b) => b[0] - a[0])
+        .map((entry) => entry[1])
 }
 
 export async function getVolumeAndTokenMetadata(
@@ -204,6 +238,7 @@ export async function getVolumeAndTokenMetadata(
                 pairState: data.pairState,
                 basePoolState: data.basePoolState,
                 quotePoolState: data.quotePoolState,
+                volume_per_day: getLastSevenDaysVolume(data.stats),
                 single: {
                     side: singleSide,
                     alr_24h:
@@ -246,7 +281,6 @@ export function createAddDefiplazaCalmLiquidityManifest(
     poolComponentAddress: string,
     shortageSide: 'QuoteShortage' | 'BaseShortage'
 ): string {
-    console.log(shortageSide)
     return shortageSide === 'BaseShortage'
         ? `
 CALL_METHOD
@@ -395,6 +429,123 @@ CALL_METHOD
 ;
 CALL_METHOD
   Address("{account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
+}
+
+export function singleSidedXrdToDfp2AmountManifest({
+    dexAddress,
+    poolComponentAddress,
+    tokenSwap,
+    account,
+    usdAmount,
+    borrowAmount,
+}: {
+    dexAddress: string
+    poolComponentAddress: string
+    tokenSwap?: string
+    account: string
+    usdAmount: string
+    borrowAmount: string
+}) {
+    return `
+CALL_METHOD
+Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
+"charge_royalty"
+;
+CALL_METHOD
+  Address("${account}")
+  "withdraw"
+  Address("${XUSDC_RESOURCE_ADDRESS}")
+  Decimal("${usdAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${XUSDC_RESOURCE_ADDRESS}")
+  Bucket("bucket_0")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "contribute"
+  Bucket("bucket_0")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1tk024ja6xnstalrqk7lrzhq3pgztxn9gqavsuxuua0up7lqntxdq2a")
+  Bucket("bucket_1")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "create_cdp"
+  Enum<0u8>()
+  Enum<0u8>()
+  Enum<0u8>()
+  Array<Bucket>(
+    Bucket("bucket_1")
+  )
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+  Bucket("nft")
+;
+CREATE_PROOF_FROM_BUCKET_OF_ALL
+  Bucket("nft")
+  Proof("nft_proof")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "borrow"
+  Proof("nft_proof")
+  Array<Tuple>(
+    Tuple(
+      Address("${XRD_RESOURCE_ADDRESS}"),
+      Decimal("${borrowAmount}")
+    )
+  )
+;
+CALL_METHOD
+  Address("${account}")
+  "deposit_batch"
+  Array<Bucket>(
+    Bucket("nft")
+  )
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${XRD_RESOURCE_ADDRESS}")
+  Bucket("xrd")
+;
+CALL_METHOD
+  Address("${dexAddress}")
+  "swap"
+  Bucket("xrd")
+  Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq")
+  Bucket("dfp2")
+;
+${
+    !tokenSwap
+        ? ''
+        : `CALL_METHOD
+Address("${dexAddress}")
+"swap"
+Bucket("dfp2")
+Address("${tokenSwap}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${tokenSwap}")
+  Bucket("boughtToken")
+;
+    `
+}
+CALL_METHOD
+Address("${poolComponentAddress}")
+"add_liquidity"
+${tokenSwap ? 'Bucket("boughtToken")' : 'Bucket("dfp2")'}
+Enum<0u8>()
+;
+CALL_METHOD
+  Address("${account}")
   "deposit_batch"
   Expression("ENTIRE_WORKTOP")
 ;`

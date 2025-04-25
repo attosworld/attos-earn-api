@@ -6,6 +6,7 @@ import {
 } from './getAccountLPPortfolio'
 import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
+import { getOciswapPoolVolumePerDay } from './src/ociswap'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -71,7 +72,13 @@ const corsHeaders = {
 
 // Cache for pools
 export let POOLS_CACHE: Pool[] | null = null
+
 const CACHE_DURATION = 60000
+
+export const POOLS_VOLUME_CACHE: Record<
+    string,
+    { data: number[]; lastUpdated: number }
+> = {}
 
 // Function to update the cache
 async function updatePoolsCache() {
@@ -83,13 +90,79 @@ async function updatePoolsCache() {
     }
 }
 
+// Function to update the cache
+async function updatePoolsVolumeCache() {
+    if (!POOLS_CACHE) return
+
+    const now = Date.now()
+
+    const pools = POOLS_CACHE.filter(
+        (p) => p.type === 'ociswap' && shouldUpdatePool(p.component, now)
+    ).sort((a, b) => {
+        return (
+            b.volume_7d - a.volume_7d ||
+            b.bonus_7d - a.bonus_7d ||
+            b.tvl - a.tvl
+        )
+    })
+
+    const poolsToUpdate = pools.slice(0, 10)
+
+    for (const pool of poolsToUpdate) {
+        try {
+            const volumeData = await getOciswapPoolVolumePerDay(
+                pool.component,
+                7
+            )
+            POOLS_VOLUME_CACHE[pool.component] = {
+                data: volumeData.volume,
+                lastUpdated: now,
+            }
+            console.log(
+                `Updated volume cache for pool ${pool.component} at ${new Date(now).toISOString()}`
+            )
+
+            // Add a small delay between requests to avoid rate limiting
+            await new Promise((resolve) => setTimeout(resolve, 1000))
+        } catch (error) {
+            console.error(
+                `Error updating volume cache for pool ${pool.component}:`,
+                error
+            )
+        }
+    }
+}
+
+function shouldUpdatePool(poolComponent: string, now: number): boolean {
+    const cache = POOLS_VOLUME_CACHE[poolComponent]
+    if (!cache) return true
+
+    const hoursSinceLastUpdate = (now - cache.lastUpdated) / (1000 * 60 * 60)
+    const pool = POOLS_CACHE?.find((p) => p.component === poolComponent)
+
+    if (!pool) return true
+
+    // Update more frequently for high-volume pools
+    if (pool.volume_7d > 1000000) return hoursSinceLastUpdate >= 1
+    if (pool.volume_7d > 100000) return hoursSinceLastUpdate >= 3
+    if (pool.volume_7d > 10000) return hoursSinceLastUpdate >= 6
+
+    // For low-volume pools, update once a day
+    return hoursSinceLastUpdate >= 24
+}
+
 // Initial cache update
 await updatePoolsCache()
+
+// await updatePoolsVolumeCache()
 
 await getStrategies()
 
 // Set up background job to update cache every 5 minutes
 setInterval(updatePoolsCache, CACHE_DURATION)
+
+// Update volume cache once per days
+setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
 
 const port = process.env.PORT || 3000
 
@@ -98,6 +171,106 @@ Bun.serve({
     async fetch(req) {
         const url = new URL(req.url)
         if (url.pathname === '/pools') {
+            // Always return the cached data, which is updated in the background
+            return new Response(JSON.stringify(POOLS_CACHE), {
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            })
+        }
+
+        if (url.pathname.startsWith('/pools/volume')) {
+            const poolComponent = url.pathname.split('/')[3]
+            const provider = url.searchParams.get('provider')
+
+            if (!poolComponent) {
+                return new Response(
+                    JSON.stringify({ error_codes: ['pool_invalid'] }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            if (!provider) {
+                return new Response(
+                    JSON.stringify({ error_codes: ['provider_invalid'] }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            switch (provider) {
+                case 'defiplaza': {
+                    const poolInfo = POOLS_CACHE?.find(
+                        (pool) => pool.component === poolComponent
+                    )
+
+                    if (!poolInfo) {
+                        return new Response(
+                            JSON.stringify({ error_codes: ['pool_not_found'] }),
+                            {
+                                status: 404,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...corsHeaders,
+                                },
+                            }
+                        )
+                    }
+
+                    const volume_per_day = poolInfo.volume_per_day || []
+
+                    return new Response(JSON.stringify({ volume_per_day }), {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                        status: 200,
+                    })
+                }
+                case 'ociswap': {
+                    const cache = POOLS_VOLUME_CACHE[poolComponent]
+                    if (cache) {
+                        return new Response(
+                            JSON.stringify({ volume_per_day: cache.data }),
+                            {
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...corsHeaders,
+                                },
+                                status: 200,
+                            }
+                        )
+                    }
+
+                    // If not in cache, fetch and cache the data
+                    const volumeData = await getOciswapPoolVolumePerDay(
+                        poolComponent,
+                        7
+                    )
+                    POOLS_VOLUME_CACHE[poolComponent] = {
+                        data: volumeData.volume,
+                        lastUpdated: Date.now(),
+                    }
+
+                    return new Response(
+                        JSON.stringify({ volume_per_day: volumeData.volume }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                            status: 200,
+                        }
+                    )
+                }
+            }
             // Always return the cached data, which is updated in the background
             return new Response(JSON.stringify(POOLS_CACHE), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },

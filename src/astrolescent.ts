@@ -15,6 +15,7 @@ export interface TokenInfo {
     totalSupply: number
     icon_url: string
     createdAt: string | null
+    tags: string[] | null
 }
 
 export type TokensResponse = Array<TokenInfo>

@@ -220,7 +220,9 @@ export async function getOciswapTokenInfo(
         })
 
         if (!response.ok) {
-            console.error(`HTTP error! status: ${response.status}`)
+            console.error(
+                `getOciswapTokenInfo : HTTP error! status: ${response.status}`
+            )
             return null
         }
 
@@ -276,7 +278,9 @@ export async function getOciswapPoolDetails(
         })
 
         if (!response.ok) {
-            console.error(`HTTP error! status: ${response.status}`)
+            console.error(
+                `getOciswapPoolDetails : HTTP error! status: ${response.status}`
+            )
             return null
         }
 
@@ -334,7 +338,9 @@ export async function getOciswapAddLiquidityPreview(
 
         if (!response.ok) {
             console.error(`HTTP error! status: ${response.status}`)
-            console.error(`HTTP error! json: ${await response.text()}`)
+            console.error(
+                `getOciswapAddLiquidityPreview : HTTP error! json: ${await response.text()}`
+            )
         }
 
         const data: AddLiquidityPreview = await response.json()
@@ -419,4 +425,175 @@ export async function getOciswapSwapPreview(
     }
 
     return (await response.json()) as SwapPreview
+}
+
+interface PoolInfo {
+    address: string
+    name: string
+    slug: string
+    fee_rate: string
+    x: TokenInfo
+    y: TokenInfo
+    base_token: 'x' | 'y'
+}
+
+interface Bound {
+    price: string
+    tick: number
+}
+
+interface SwapTokenInfo {
+    price: TokenAmount
+    amount: TokenAmount
+    fee: TokenAmount
+}
+
+interface SwapVolumeFee {
+    xrd: string
+    usd: string
+}
+
+interface InstantiatePoolEvent {
+    type: 'instantiate_pool'
+    timestamp: string
+    transaction_id: string
+    pool: PoolInfo
+}
+
+interface AddLiquidityEvent {
+    type: 'add_liquidity'
+    timestamp: string
+    transaction_id: string
+    pool: PoolInfo
+    left_bound: Bound
+    right_bound: Bound
+    lp_nft_id: string
+    x: TokenAmount
+    y: TokenAmount
+    liquidity: TokenAmount
+}
+
+interface RemoveLiquidityEvent {
+    type: 'remove_liquidity'
+    timestamp: string
+    transaction_id: string
+    pool: PoolInfo
+    lp_nft_id: string
+    x: TokenAmount
+    y: TokenAmount
+    liquidity: TokenAmount
+}
+
+interface SwapEvent {
+    type: 'swap'
+    swap_type: 'buy_x' | 'buy_y'
+    timestamp: string
+    transaction_id: string
+    pool: PoolInfo
+    x: SwapTokenInfo
+    y: SwapTokenInfo
+    volume: SwapVolumeFee
+    fee: SwapVolumeFee
+}
+
+type PoolEvent =
+    | InstantiatePoolEvent
+    | AddLiquidityEvent
+    | RemoveLiquidityEvent
+    | SwapEvent
+
+interface PoolEventsResponse {
+    data: PoolEvent[]
+    next_cursor: number | null
+}
+
+export async function getOciswapPoolEvents(
+    poolIdentifier: string,
+    days: number = 7,
+    items: PoolEvent[] = [],
+    cursor: number = 0,
+    limit: number = 100
+): Promise<PoolEvent[]> {
+    const options = { method: 'GET', headers: { accept: 'application/json' } }
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - days)
+
+    try {
+        const response = await fetch(
+            `https://api.ociswap.com/pools/${poolIdentifier}/events?cursor=${cursor}&limit=${limit}`,
+            options
+        )
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result = (await response.json()) as PoolEventsResponse
+
+        const filteredEvents = result.data.filter(
+            (event) => new Date(event.timestamp) >= cutoffDate
+        )
+        const newItems = [...items, ...filteredEvents]
+
+        if (
+            result.next_cursor !== null &&
+            filteredEvents.length === result.data.length
+        ) {
+            // If there's a next cursor and we haven't reached the cutoff date, make a recursive call
+            return getOciswapPoolEvents(
+                poolIdentifier,
+                days,
+                newItems,
+                result.next_cursor,
+                limit
+            )
+        }
+
+        // If there's no next cursor or we've reached the cutoff date, return the accumulated items
+        return newItems
+    } catch (err) {
+        console.error('Error fetching Ociswap pool events:', err)
+        // In case of an error, return the items collected so far
+        return items
+    }
+}
+
+export async function getOciswapPoolVolumePerDay(
+    poolIdentifier: string,
+    days: number = 7
+): Promise<{ pool: string; volume: number[] }> {
+    const events = await getOciswapPoolEvents(poolIdentifier, days)
+
+    // Create a map to store volume per day
+    const volumePerDay = new Map<string, number>()
+
+    // Initialize the last 'days' number of days with 0 volume
+    const now = new Date()
+    for (let i = 0; i < days; i++) {
+        const date = new Date(now)
+        date.setDate(now.getDate() - i)
+        const dateString = date.toISOString().split('T')[0]
+        volumePerDay.set(dateString, 0)
+    }
+
+    // Process swap events
+    events.forEach((event) => {
+        if (event.type === 'swap') {
+            const date = new Date(event.timestamp)
+            const dateString = date.toISOString().split('T')[0]
+
+            if (volumePerDay.has(dateString)) {
+                const currentVolume = volumePerDay.get(dateString) || 0
+                const eventVolume = parseFloat(event.volume.usd)
+                volumePerDay.set(dateString, currentVolume + eventVolume)
+            }
+        }
+    })
+
+    // Convert map to array, sorted from oldest to newest
+    const sortedVolumes = Array.from(volumePerDay.entries())
+        .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+        .map((entry) => entry[1])
+
+    return { pool: poolIdentifier, volume: sortedVolumes }
 }

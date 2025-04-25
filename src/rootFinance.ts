@@ -34,7 +34,9 @@ export async function getRootFinancePoolState(): Promise<RootFinancePoolStateRes
         )
 
         if (!response.ok) {
-            console.error(`HTTP error! status: ${response.status}`)
+            console.error(
+                `getRootFinancePoolState : HTTP error! status: ${response.status}`
+            )
             return null
         }
 
