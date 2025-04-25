@@ -12,9 +12,18 @@ import {
     type EnhancedTransactionInfo,
 } from './getAllAddLiquidityTxs'
 import { tokensRequest, type TokenInfo } from './src/astrolescent'
-import { defiplazaLpInfo, type DefiPlazaLPInfo } from './src/defiplaza'
 import {
+    closeDefiplazaLpPosition,
+    closeDefiplazaLpValue,
+    defiplazaLpInfo,
+    getVolumeAndTokenMetadata,
+    type DefiPlazaLPInfo,
+} from './src/defiplaza'
+import {
+    closeOciswapLpPosition,
+    closeOciswapLpValue,
     getOciswapLpInfo,
+    getOciswapSwapPreview,
     getOciswapTokenInfo,
     type OciswapLPInfo,
 } from './src/ociswap'
@@ -427,6 +436,10 @@ async function processStrategyTransaction(
         let investedAmount = new Decimal(0)
         let currentValue = new Decimal(0)
         let closeManifest: string = ''
+        let loanAmount = new Decimal(0)
+        let loanCurrency = ''
+        let borrowAmount = new Decimal(0)
+        let borrowCurrency = ''
 
         const xrdChange = tx.balance_changes?.fungible_balance_changes.find(
             (bc) =>
@@ -477,7 +490,11 @@ async function processStrategyTransaction(
                     if (ratio) {
                         underlyingXrdAmount = new Decimal(
                             poolUnitXrdAmount
-                        ).div(new Decimal(ratio))
+                        ).div(ratio)
+
+                        loanAmount = underlyingXrdAmount
+                        loanCurrency = 'XRD'
+
                         currentValue = currentValue.add(underlyingXrdAmount)
                     }
                 }
@@ -498,6 +515,10 @@ async function processStrategyTransaction(
                         underlyingUsdAmount = new Decimal(
                             usdPoolUnitBorrowed
                         ).div(ratio)
+
+                        borrowAmount = underlyingUsdAmount
+                        borrowCurrency = 'XUSDC'
+
                         currentValue = currentValue.minus(
                             underlyingUsdAmount.times(
                                 tokenPrices[XUSDC_RESOURCE_ADDRESS]
@@ -559,6 +580,10 @@ async function processStrategyTransaction(
             ),
             provider: `Root Finance, Surge`,
             tx: tx.intent_hash,
+            loanAmount,
+            loanCurrency,
+            borrowAmount,
+            borrowCurrency,
             closeManifest,
         }
     } else if (
@@ -568,6 +593,10 @@ async function processStrategyTransaction(
     ) {
         let investedAmount = new Decimal(0)
         let currentValue = new Decimal(0)
+        let loanAmount = new Decimal(0)
+        let loanCurrency = ''
+        let borrowAmount = new Decimal(0)
+        let borrowCurrency = ''
         let closeManifest: string = ''
 
         const xusdChange = tx.balance_changes?.fungible_balance_changes.find(
@@ -635,7 +664,6 @@ async function processStrategyTransaction(
                 ) as { x_address: string; y_address: string }
 
             ;(underlyingTokens as OciswapLPInfo).x_address = x_address
-
             ;(underlyingTokens as OciswapLPInfo).y_address = y_address
         }
 
@@ -645,7 +673,6 @@ async function processStrategyTransaction(
 
         const lpValue = calculateCurrentValue(underlyingTokens, tokenPrices)
 
-        console.log('lpValue', underlyingTokens, lpValue)
         currentValue = currentValue.plus(
             lpValue.mul(tokenPrices[XUSDC_RESOURCE_ADDRESS].tokenPriceXRD)
         )
@@ -661,7 +688,7 @@ async function processStrategyTransaction(
                 collaterals.entries.length &&
                 'value' in collaterals.entries[0].value
             ) {
-                const poolUnitXrdAmount = collaterals.entries[0].value
+                const poolUnitUsdAmount = collaterals.entries[0].value
                     .value as string
 
                 const ratio = rootFinancePoolState.states.find(
@@ -669,9 +696,13 @@ async function processStrategyTransaction(
                 )?.unit_to_asset_ratio
 
                 if (ratio) {
-                    underlyingXrdAmount = new Decimal(poolUnitXrdAmount).div(
+                    underlyingXrdAmount = new Decimal(poolUnitUsdAmount).div(
                         new Decimal(ratio)
                     )
+
+                    loanAmount = new Decimal(underlyingXrdAmount)
+                    loanCurrency = 'XUSDC'
+
                     currentValue = currentValue.add(underlyingXrdAmount)
                 }
             }
@@ -692,6 +723,10 @@ async function processStrategyTransaction(
                     underlyingUsdAmount = new Decimal(usdPoolUnitBorrowed).div(
                         ratio
                     )
+
+                    borrowAmount = new Decimal(underlyingUsdAmount)
+                    borrowCurrency = 'XRD'
+
                     currentValue = currentValue.minus(
                         underlyingUsdAmount.times(
                             tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
@@ -700,19 +735,139 @@ async function processStrategyTransaction(
                 }
             }
         }
-        closeManifest = CLOSE_STRATEGY_MANIFEST.replaceAll('{account}', address)
-            .replaceAll('{surgeLpAmount}', defiplazaOrOciswapLp.balance_change)
-            .replaceAll('{rootNftId}', rootNft.added[0])
-            .replaceAll(
-                '{lendAmount}',
-                underlyingXrdAmount.toDecimalPlaces(18).toString()
+
+        const ociswapSellToken =
+            'x_address' in underlyingTokens && 'y_address' in underlyingTokens
+                ? underlyingTokens.x_address !== XRD_RESOURCE_ADDRESS
+                    ? underlyingTokens.x_address
+                    : underlyingTokens.y_address
+                : undefined
+
+        const tokenAmount =
+            'x_address' in underlyingTokens && 'y_address' in underlyingTokens
+                ? underlyingTokens.x_address !== XRD_RESOURCE_ADDRESS
+                    ? underlyingTokens.x_amount.token
+                    : underlyingTokens.y_amount.token
+                : undefined
+
+        const defiplazaSellToken =
+            'baseToken' in underlyingTokens && 'quoteToken' in underlyingTokens
+                ? underlyingTokens.baseToken
+                : undefined
+
+        if (ociswapSellToken && tokenAmount) {
+            const swapPreview = await getOciswapSwapPreview(
+                ociswapSellToken,
+                tokenAmount,
+                XRD_RESOURCE_ADDRESS,
+                ''
             )
 
+            if (swapPreview) {
+                closeManifest = closeOciswapLpPosition({
+                    nonXrd: ociswapSellToken,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent:
+                        lpMetatadata.metadata.infoUrl?.split('/')[4] || '',
+                    account: address,
+                    rootNftId: rootNft.added[0],
+                    swapComponent: swapPreview.swaps[0].pool_address,
+                    lendAmount: xusdChange?.balance_change || '0',
+                })
+
+                const valueManifest = closeOciswapLpValue({
+                    nonXrd: ociswapSellToken,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent:
+                        lpMetatadata.metadata.infoUrl?.split('/')[4] || '',
+                    account: address,
+                    swapComponent: swapPreview.swaps[0].pool_address,
+                })
+
+                const preview = await previewTx(valueManifest)
+
+                const value = preview.resource_changes?.find((rc) =>
+                    (
+                        rc as {
+                            index: number
+                            resource_changes: ResourceChange[]
+                        }
+                    ).resource_changes?.find(
+                        (rc) =>
+                            +rc.component_entity.entity_address.startsWith(
+                                'account_rdx'
+                            )
+                    )
+                ) as { resource_changes: ResourceChange[] } | undefined
+
+                if (value) {
+                    currentValue = new Decimal(
+                        value.resource_changes[0].amount
+                    ).abs()
+                }
+            }
+        }
+
+        if (defiplazaSellToken) {
+            const dfpLpInfo =
+                await getVolumeAndTokenMetadata(defiplazaSellToken)
+
+            const isQuote =
+                !!lpMetatadata.metadata.name?.match(/Defiplaza (.+) Quote/)
+
+            if (dfpLpInfo) {
+                closeManifest = closeDefiplazaLpPosition({
+                    baseToken: defiplazaSellToken,
+                    isQuote,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent: dfpLpInfo.component,
+                    account: address,
+                    rootNftId: rootNft.added[0],
+                    swapComponent:
+                        'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68',
+                    lendAmount: underlyingXrdAmount
+                        .toDecimalPlaces(18)
+                        .toString(),
+                })
+
+                const valueManifest = closeDefiplazaLpValue({
+                    baseToken: defiplazaSellToken,
+                    isQuote,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent: dfpLpInfo.component,
+                    account: address,
+                    swapComponent:
+                        'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68',
+                })
+
+                const preview = await previewTx(valueManifest)
+
+                const value = preview.resource_changes?.find((rc) =>
+                    (
+                        rc as {
+                            index: number
+                            resource_changes: ResourceChange[]
+                        }
+                    ).resource_changes?.find(
+                        (rc) =>
+                            +rc.amount > 0 &&
+                            rc.resource_address === XRD_RESOURCE_ADDRESS
+                    )
+                ) as { resource_changes: ResourceChange[] } | undefined
+
+                if (value) {
+                    currentValue = new Decimal(value.resource_changes[0].amount)
+                }
+            }
+        }
+
         if (xusdChange) {
-            investedAmount = investedAmount.plus(
-                new Decimal(xusdChange.balance_change)
-                    .abs()
-                    .mul(tokenPrices[XUSDC_RESOURCE_ADDRESS].tokenPriceXRD)
+            investedAmount = borrowAmount.times(
+                tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceXRD
             )
         }
 
@@ -740,6 +895,10 @@ async function processStrategyTransaction(
             ),
             provider: `Root Finance, ${lpInfo?.type || ''}`,
             tx: tx.intent_hash,
+            loanAmount,
+            loanCurrency,
+            borrowCurrency,
+            borrowAmount,
             closeManifest,
         }
     }
@@ -893,6 +1052,10 @@ export async function getAccountLPPortfolio(address: string) {
                     provider,
                     closeManifest,
                     tx: txid,
+                    loanAmount,
+                    loanCurrency,
+                    borrowAmount,
+                    borrowCurrency,
                 } = strategyTx
 
                 const pnlAmount = currentValueUsd.minus(investedAmountUsd)
@@ -916,6 +1079,10 @@ export async function getAccountLPPortfolio(address: string) {
                     strategy: true,
                     tx: txid,
                     closeManifest,
+                    loanAmount,
+                    loanCurrency,
+                    borrowCurrency,
+                    borrowAmount,
                 } as PoolPortfolioItem
             }),
         ])

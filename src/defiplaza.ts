@@ -1,4 +1,5 @@
 import {
+    DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
@@ -543,6 +544,170 @@ Address("${poolComponentAddress}")
 "add_liquidity"
 ${tokenSwap ? 'Bucket("boughtToken")' : 'Bucket("dfp2")'}
 Enum<0u8>()
+;
+CALL_METHOD
+  Address("${account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
+}
+
+export function closeDefiplazaLpPosition({
+    baseToken,
+    isQuote,
+    lpAddress,
+    lpAmount,
+    lpComponent,
+    account,
+    rootNftId,
+    swapComponent,
+    lendAmount,
+}: {
+    isQuote: boolean
+    baseToken: string
+    lpAddress: string
+    lpAmount: string
+    lpComponent: string
+    account: string
+    rootNftId: string
+    swapComponent: string
+    lendAmount: string
+}) {
+    return `CALL_METHOD
+  Address("${account}")
+  "withdraw"
+  Address("${lpAddress}")
+  Decimal("${lpAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${lpAddress}")
+  Bucket("surge_lp")
+;
+CALL_METHOD
+  Address("${lpComponent}")
+  "remove_liquidity"
+  Bucket("surge_lp")
+  ${isQuote}
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${baseToken}")
+  Bucket("left_token")
+;
+CALL_METHOD
+    Address("${swapComponent}")
+    "swap"
+    Bucket("left_token")
+    Address("${DFP2_RESOURCE_ADDRESS}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${DFP2_RESOURCE_ADDRESS}")
+  Bucket("right_token")
+;
+CALL_METHOD
+    Address("${swapComponent}")
+    "swap"
+    Bucket("right_token")
+    Address("${XRD_RESOURCE_ADDRESS}")
+;
+TAKE_ALL_FROM_WORKTOP
+    Address("${XRD_RESOURCE_ADDRESS}")
+    Bucket("xrd")
+;
+CALL_METHOD
+  Address("${account}")
+  "create_proof_of_non_fungibles"
+  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+  Array<NonFungibleLocalId>(
+    NonFungibleLocalId("${rootNftId}")
+  )
+;
+POP_FROM_AUTH_ZONE
+  Proof("root_nft")
+;
+CLONE_PROOF
+  Proof("root_nft")
+  Proof("root_nft_2")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "repay"
+  Proof("root_nft")
+  Enum<0u8>()
+  Array<Bucket>(
+    Bucket("xrd")
+  )
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "remove_collateral"
+  Proof("root_nft_2")
+  Array<Tuple>(
+    Tuple(
+      Address("${XUSDC_RESOURCE_ADDRESS}"),
+      Decimal("${lendAmount}"),
+      false
+    )
+  )
+;
+CALL_METHOD
+  Address("${account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
+}
+
+export function closeDefiplazaLpValue({
+    baseToken,
+    isQuote,
+    lpAddress,
+    lpAmount,
+    lpComponent,
+    account,
+    swapComponent,
+}: {
+    isQuote: boolean
+    baseToken: string
+    lpAddress: string
+    lpAmount: string
+    lpComponent: string
+    account: string
+    swapComponent: string
+}) {
+    return `CALL_METHOD
+  Address("${account}")
+  "withdraw"
+  Address("${lpAddress}")
+  Decimal("${lpAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${lpAddress}")
+  Bucket("surge_lp")
+;
+CALL_METHOD
+  Address("${lpComponent}")
+  "remove_liquidity"
+  Bucket("surge_lp")
+  ${isQuote}
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${baseToken}")
+  Bucket("left_token")
+;
+CALL_METHOD
+    Address("${swapComponent}")
+    "swap"
+    Bucket("left_token")
+    Address("${DFP2_RESOURCE_ADDRESS}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${DFP2_RESOURCE_ADDRESS}")
+  Bucket("right_token")
+;
+CALL_METHOD
+    Address("${swapComponent}")
+    "swap"
+    Bucket("right_token")
+    Address("${XRD_RESOURCE_ADDRESS}")
 ;
 CALL_METHOD
   Address("${account}")
