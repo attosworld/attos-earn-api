@@ -697,7 +697,7 @@ async function processStrategyTransaction(
 
                 if (ratio) {
                     underlyingXrdAmount = new Decimal(poolUnitUsdAmount).div(
-                        new Decimal(ratio)
+                        ratio
                     )
 
                     loanAmount = new Decimal(underlyingXrdAmount)
@@ -736,6 +736,12 @@ async function processStrategyTransaction(
             }
         }
 
+        if (xusdChange) {
+            investedAmount = borrowAmount.times(
+                tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceXRD
+            )
+        }
+
         const ociswapSellToken =
             'x_address' in underlyingTokens && 'y_address' in underlyingTokens
                 ? underlyingTokens.x_address !== XRD_RESOURCE_ADDRESS
@@ -764,18 +770,6 @@ async function processStrategyTransaction(
             )
 
             if (swapPreview) {
-                closeManifest = closeOciswapLpPosition({
-                    nonXrd: ociswapSellToken,
-                    lpAddress: defiplazaOrOciswapLp.resource_address,
-                    lpAmount: defiplazaOrOciswapLp.balance_change,
-                    lpComponent:
-                        lpMetatadata.metadata.infoUrl?.split('/')[4] || '',
-                    account: address,
-                    rootNftId: rootNft.added[0],
-                    swapComponent: swapPreview.swaps[0].pool_address,
-                    lendAmount: xusdChange?.balance_change || '0',
-                })
-
                 const valueManifest = closeOciswapLpValue({
                     nonXrd: ociswapSellToken,
                     lpAddress: defiplazaOrOciswapLp.resource_address,
@@ -798,15 +792,31 @@ async function processStrategyTransaction(
                         (rc) =>
                             +rc.component_entity.entity_address.startsWith(
                                 'account_rdx'
-                            )
+                            ) && rc.resource_address === XRD_RESOURCE_ADDRESS
                     )
                 ) as { resource_changes: ResourceChange[] } | undefined
 
                 if (value) {
-                    currentValue = new Decimal(
-                        value.resource_changes[0].amount
-                    ).abs()
+                    currentValue = new Decimal(value.resource_changes[0].amount)
                 }
+
+                closeManifest = closeOciswapLpPosition({
+                    nonXrd: ociswapSellToken,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent:
+                        lpMetatadata.metadata.infoUrl?.split('/')[4] || '',
+                    account: address,
+                    rootNftId: rootNft.added[0],
+                    swapComponent: swapPreview.swaps[0].pool_address,
+                    lendAmount: loanAmount.toFixed(18) || '0',
+                    withdrawLossAmount: currentValue.lessThan(investedAmount)
+                        ? investedAmount
+                              .minus(currentValue)
+                              .mul(1.2)
+                              .toFixed(18)
+                        : undefined,
+                })
             }
         }
 
@@ -818,21 +828,6 @@ async function processStrategyTransaction(
                 !!lpMetatadata.metadata.name?.match(/Defiplaza (.+) Quote/)
 
             if (dfpLpInfo) {
-                closeManifest = closeDefiplazaLpPosition({
-                    baseToken: defiplazaSellToken,
-                    isQuote,
-                    lpAddress: defiplazaOrOciswapLp.resource_address,
-                    lpAmount: defiplazaOrOciswapLp.balance_change,
-                    lpComponent: dfpLpInfo.component,
-                    account: address,
-                    rootNftId: rootNft.added[0],
-                    swapComponent:
-                        'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68',
-                    lendAmount: underlyingXrdAmount
-                        .toDecimalPlaces(18)
-                        .toString(),
-                })
-
                 const valueManifest = closeDefiplazaLpValue({
                     baseToken: defiplazaSellToken,
                     isQuote,
@@ -862,13 +857,28 @@ async function processStrategyTransaction(
                 if (value) {
                     currentValue = new Decimal(value.resource_changes[0].amount)
                 }
-            }
-        }
 
-        if (xusdChange) {
-            investedAmount = borrowAmount.times(
-                tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceXRD
-            )
+                closeManifest = closeDefiplazaLpPosition({
+                    baseToken: defiplazaSellToken,
+                    isQuote,
+                    lpAddress: defiplazaOrOciswapLp.resource_address,
+                    lpAmount: defiplazaOrOciswapLp.balance_change,
+                    lpComponent: dfpLpInfo.component,
+                    account: address,
+                    rootNftId: rootNft.added[0],
+                    swapComponent:
+                        'component_rdx1cqy7sq3mxj2whhlqlryy05hzs96m0ajnv23e7j7vanmdwwlccnmz68',
+                    lendAmount: underlyingXrdAmount
+                        .toDecimalPlaces(18)
+                        .toString(),
+                    withdrawLossAmount: currentValue.lessThan(investedAmount)
+                        ? investedAmount
+                              .minus(currentValue)
+                              .mul(1.2)
+                              .toFixed(18)
+                        : undefined,
+                })
+            }
         }
 
         if (

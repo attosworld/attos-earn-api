@@ -562,6 +562,7 @@ export function closeDefiplazaLpPosition({
     rootNftId,
     swapComponent,
     lendAmount,
+    withdrawLossAmount,
 }: {
     isQuote: boolean
     baseToken: string
@@ -572,6 +573,7 @@ export function closeDefiplazaLpPosition({
     rootNftId: string
     swapComponent: string
     lendAmount: string
+    withdrawLossAmount?: string
 }) {
     return `CALL_METHOD
   Address("${account}")
@@ -609,6 +611,17 @@ CALL_METHOD
     Bucket("right_token")
     Address("${XRD_RESOURCE_ADDRESS}")
 ;
+${
+    withdrawLossAmount
+        ? `CALL_METHOD
+Address("${account}")
+"withdraw"
+Address("${XRD_RESOURCE_ADDRESS}")
+Decimal("${withdrawLossAmount}")
+;
+    `
+        : ''
+}
 TAKE_ALL_FROM_WORKTOP
     Address("${XRD_RESOURCE_ADDRESS}")
     Bucket("xrd")

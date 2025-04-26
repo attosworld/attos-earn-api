@@ -610,6 +610,7 @@ export function closeOciswapLpPosition({
     rootNftId,
     swapComponent,
     lendAmount,
+    withdrawLossAmount,
 }: {
     nonXrd: string
     lpAddress: string
@@ -619,6 +620,7 @@ export function closeOciswapLpPosition({
     rootNftId: string
     swapComponent: string
     lendAmount: string
+    withdrawLossAmount?: string
 }) {
     return `CALL_METHOD
   Address("${account}")
@@ -644,6 +646,16 @@ CALL_METHOD
     "swap"
     Bucket("left_token")
 ;
+${
+    withdrawLossAmount
+        ? `CALL_METHOD
+Address("${account}")
+"withdraw"
+Address("${XRD_RESOURCE_ADDRESS}")
+Decimal("${withdrawLossAmount}")
+;`
+        : ''
+}
 TAKE_ALL_FROM_WORKTOP
     Address("${XRD_RESOURCE_ADDRESS}")
     Bucket("xrd")
