@@ -4,8 +4,15 @@ import type {
 } from '@radixdlt/babylon-gateway-api-sdk'
 import { gatewayApi } from '.'
 
+export const OLD_ATTOS_ROYALTY_COMPONENT =
+    'component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu'
+
+export const OLD_CHARGE_ROYALTY_METHOD = 'charge_royalty'
+
 export const ATTOS_ROYALTY_COMPONENT =
     'component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6'
+
+export const CHARGE_ROYALTY_METHOD = 'charge_strategy_royalty'
 
 export type EnhancedTransactionInfo = CommittedTransactionInfo & {
     liquidity?: 'added' | 'removed'
@@ -25,7 +32,7 @@ export const CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
 ]
 
 export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
-    'charge_strategy_royalty',
+    CHARGE_ROYALTY_METHOD,
     'withdraw',
     'contribute',
     'create_cdp',
@@ -35,7 +42,7 @@ export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
 ]
 
 export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
-    'charge_strategy_royalty',
+    CHARGE_ROYALTY_METHOD,
     'withdraw',
     'contribute',
     'create_cdp',
@@ -48,7 +55,8 @@ const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
     (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&
         !!tx.balance_changes?.fungible_fee_balance_changes.some(
             (f) => f.type === 'RoyaltyDistributed'
-        )) ||
+        ) &&
+        tx.manifest_instructions?.includes(CHARGE_ROYALTY_METHOD)) ||
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every((method) =>
         tx.manifest_instructions?.includes(method)
     )

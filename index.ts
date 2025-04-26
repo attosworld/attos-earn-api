@@ -7,6 +7,7 @@ import {
 import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
 import { getOciswapPoolVolumePerDay } from './src/ociswap'
+import { STRATEGY_MANIFEST } from './src/strategyManifest'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -389,6 +390,21 @@ Bun.serve({
                         yTokenAmount
                     )
                 ),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/stats') {
+            return new Response(
+                JSON.stringify({
+                    pools: POOLS_CACHE?.length || 0,
+                    strategies: Object.keys(STRATEGY_MANIFEST).length || 0,
+                }),
                 {
                     headers: {
                         'Content-Type': 'application/json',
