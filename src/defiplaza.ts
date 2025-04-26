@@ -360,8 +360,8 @@ CALL_METHOD
 export function xrdToDfp2AmountManifest(dexAddress: string) {
     return `
 CALL_METHOD
-Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
-"charge_royalty"
+Address("component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6")
+"charge_strategy_royalty"
 ;
 CALL_METHOD
   Address("{account}")
@@ -452,8 +452,8 @@ export function singleSidedXrdToDfp2AmountManifest({
 }) {
     return `
 CALL_METHOD
-Address("component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu")
-"charge_royalty"
+Address("component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6")
+"charge_strategy_royalty"
 ;
 CALL_METHOD
   Address("${account}")

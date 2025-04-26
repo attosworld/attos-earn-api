@@ -5,7 +5,7 @@ import type {
 import { gatewayApi } from '.'
 
 export const ATTOS_ROYALTY_COMPONENT =
-    'component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu'
+    'component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6'
 
 export type EnhancedTransactionInfo = CommittedTransactionInfo & {
     liquidity?: 'added' | 'removed'
@@ -25,7 +25,7 @@ export const CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
 ]
 
 export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
-    'charge_royalty',
+    'charge_strategy_royalty',
     'withdraw',
     'contribute',
     'create_cdp',
@@ -35,7 +35,7 @@ export const OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
 ]
 
 export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
-    'charge_royalty',
+    'charge_strategy_royalty',
     'withdraw',
     'contribute',
     'create_cdp',
