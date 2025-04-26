@@ -137,6 +137,7 @@ CALL_METHOD
   Bucket("susd")
   Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
 ;
+{withdrawLossAmount}
 TAKE_ALL_FROM_WORKTOP
   Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
   Bucket("xusdc")
@@ -528,6 +529,7 @@ async function processStrategyTransaction(
                     }
                 }
             }
+
             closeManifest = CLOSE_STRATEGY_MANIFEST.replaceAll(
                 '{account}',
                 address
@@ -555,6 +557,17 @@ async function processStrategyTransaction(
                 await getAssetOutStrategyValue(outAsset, address)
             )
         }
+
+        closeManifest = closeManifest.replace(
+            '{withdrawLossAmount}',
+            currentValue.lessThan(investedAmount)
+                ? `CALL_METHOD Address("${address}")
+"withdraw"
+Address("${XUSDC_RESOURCE_ADDRESS}")
+Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADDRESS].tokenPriceXRD).mul(1.05).toFixed(6)}")
+;`
+                : ''
+        )
 
         if (
             txs.find(
