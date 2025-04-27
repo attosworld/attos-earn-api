@@ -17,6 +17,7 @@ import {
     closeDefiplazaLpValue,
     defiplazaLpInfo,
     getVolumeAndTokenMetadata,
+    removeDefiplazaLiquidity,
     type DefiPlazaLPInfo,
 } from './src/defiplaza'
 import {
@@ -25,6 +26,7 @@ import {
     getOciswapLpInfo,
     getOciswapSwapPreview,
     getOciswapTokenInfo,
+    removeOciswapLiquidity,
     type OciswapLPInfo,
 } from './src/ociswap'
 import { s } from '@calamari-radix/gateway-ez-mode'
@@ -1050,6 +1052,25 @@ export async function getAccountLPPortfolio(address: string) {
                     ),
                     pnl: pnlAmount.toFixed(),
                     pnlPercentage: pnlPercent,
+                    closeManifest:
+                        lpInfo.type === 'defiplaza'
+                            ? removeDefiplazaLiquidity({
+                                  isQuote:
+                                      PAIR_NAME_CACHE[lpAddress].type ===
+                                      'quote',
+                                  lpAddress,
+                                  lpAmount: lpInfo.balance || '0',
+                                  lpComponent:
+                                      PAIR_NAME_CACHE[lpAddress].component,
+                                  account: address,
+                              })
+                            : removeOciswapLiquidity({
+                                  lpAddress,
+                                  lpAmount: lpInfo.balance || '0',
+                                  lpComponent:
+                                      PAIR_NAME_CACHE[lpAddress].component,
+                                  account: address,
+                              }),
                 } as PoolPortfolioItem
             }),
             ...strategyTxs.map(async (tx, _, txs) => {

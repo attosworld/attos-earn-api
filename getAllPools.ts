@@ -55,6 +55,7 @@ export async function getAllPools(): Promise<Pool[]> {
             left_icon: o.x.token.icon_url,
             right_alt: o.y.token.symbol,
             right_icon: o.y.token.icon_url,
+            component: o.address,
         }
         return {
             type: 'ociswap',
@@ -134,6 +135,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                component: base.component,
+                                type: 'base',
                             }
                         }
 
@@ -145,6 +148,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                component: base.component,
+                                type: 'quote',
                             }
                         }
 
@@ -156,6 +161,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                component: quote.component,
+                                type: 'quote',
                             }
                         }
 
@@ -167,6 +174,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                component: quote.component,
+                                type: 'quote',
                             }
                         }
 

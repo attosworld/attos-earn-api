@@ -728,3 +728,39 @@ CALL_METHOD
   Expression("ENTIRE_WORKTOP")
 ;`
 }
+
+export function removeDefiplazaLiquidity({
+    isQuote,
+    lpAddress,
+    lpAmount,
+    lpComponent,
+    account,
+}: {
+    isQuote: boolean
+    lpAddress: string
+    lpAmount: string
+    lpComponent: string
+    account: string
+}) {
+    return `CALL_METHOD
+  Address("${account}")
+  "withdraw"
+  Address("${lpAddress}")
+  Decimal("${lpAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("${lpAddress}")
+  Bucket("surge_lp")
+;
+CALL_METHOD
+  Address("${lpComponent}")
+  "remove_liquidity"
+  Bucket("surge_lp")
+  ${isQuote}
+;
+CALL_METHOD
+  Address("${account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
+}
