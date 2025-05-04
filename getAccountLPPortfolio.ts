@@ -3,7 +3,7 @@ import type {
     ResourceInfo,
 } from '@calamari-radix/gateway-ez-mode/dist/types'
 import Decimal from 'decimal.js'
-import { gatewayApi, gatewayApiEzMode, PAIR_NAME_CACHE } from '.'
+import { BOOSTED_POOLS, gatewayApi, gatewayApiEzMode, PAIR_NAME_CACHE } from '.'
 import {
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     getAllAddLiquidityTxs,
@@ -55,6 +55,7 @@ export interface PoolPortfolioItem {
     pnl: string
     pnlPercentage: string
     strategy?: boolean
+    airdropToken?: string
 }
 
 export function isDefiplazaLPInfo(
@@ -245,7 +246,7 @@ export async function previewTx(manifest: string) {
         transactionPreviewRequest: {
             manifest,
             signer_public_keys: [],
-            nonce: 99,
+            nonce: Math.random() * 100000,
             start_epoch_inclusive: 0,
             end_epoch_exclusive: 1,
             flags: {
@@ -571,6 +572,26 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
                 : ''
         )
 
+        const preview = await previewTx(closeManifest)
+
+        const value = preview.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    rc.component_entity.entity_address.startsWith(
+                        'account_rdx'
+                    ) && rc.resource_address === XRD_RESOURCE_ADDRESS
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        if (value) {
+            currentValue = new Decimal(value.resource_changes[0].amount)
+        }
+
         if (
             txs.find(
                 (tx) =>
@@ -600,6 +621,10 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
             borrowAmount,
             borrowCurrency,
             closeManifest,
+            poolName: 'Surge LP',
+            leftAlt: 'SLP',
+            leftIcon:
+                'https://image-service.radixdlt.com/?imageSize=256x256&imageOrigin=https%3A%2F%2Fsurge.trade%2Fimages%2Fsurge_lp_token.png',
         }
     } else if (
         OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST.every((method) =>
@@ -920,6 +945,19 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
             ),
             provider: `Root Finance, ${lpInfo?.type || ''}`,
             tx: tx.intent_hash,
+            poolName:
+                PAIR_NAME_CACHE[defiplazaOrOciswapLp.resource_address].name,
+            leftAlt:
+                PAIR_NAME_CACHE[defiplazaOrOciswapLp.resource_address].left_alt,
+            rightAlt:
+                PAIR_NAME_CACHE[defiplazaOrOciswapLp.resource_address]
+                    .right_alt,
+            leftIcon:
+                PAIR_NAME_CACHE[defiplazaOrOciswapLp.resource_address]
+                    .left_icon,
+            rightIcon:
+                PAIR_NAME_CACHE[defiplazaOrOciswapLp.resource_address]
+                    .right_icon,
             loanAmount,
             loanCurrency,
             borrowCurrency,
@@ -1014,6 +1052,31 @@ export async function getAccountLPPortfolio(address: string) {
                 const underlyingTokens = await getLPInfo(lpAddress, lpInfo)
                 if (!underlyingTokens) return null
 
+                let airdropToken = new Decimal(0)
+
+                if (
+                    BOOSTED_POOLS[
+                        PAIR_NAME_CACHE[lpAddress]?.component
+                    ]?.docs?.includes('ilis-dao')
+                ) {
+                    const txs = liquidityPoolTxs.filter(
+                        (l) => l.airdropToken === 'ilis'
+                    )
+
+                    const airdrops = txs
+                        .map((tx) =>
+                            tx.balance_changes?.fungible_balance_changes.find(
+                                (fb) => fb.entity_address === address
+                            )
+                        )
+                        .filter(Boolean) as TransactionFungibleBalanceChanges[]
+
+                    airdropToken = airdrops.reduce(
+                        (total, airdrop) => total.plus(airdrop.balance_change),
+                        new Decimal(0)
+                    )
+                }
+
                 const currentValue = calculateCurrentValue(
                     underlyingTokens,
                     tokenPrices
@@ -1052,11 +1115,12 @@ export async function getAccountLPPortfolio(address: string) {
                     ),
                     pnl: pnlAmount.toFixed(),
                     pnlPercentage: pnlPercent,
+                    bonusAirdrop: airdropToken.toFixed(18),
                     closeManifest:
                         lpInfo.type === 'defiplaza'
                             ? removeDefiplazaLiquidity({
                                   isQuote:
-                                      PAIR_NAME_CACHE[lpAddress].type ===
+                                      PAIR_NAME_CACHE[lpAddress]?.type ===
                                       'quote',
                                   lpAddress,
                                   lpAmount: lpInfo.balance || '0',
@@ -1100,6 +1164,11 @@ export async function getAccountLPPortfolio(address: string) {
                     loanCurrency,
                     borrowAmount,
                     borrowCurrency,
+                    poolName,
+                    leftAlt,
+                    rightAlt,
+                    leftIcon,
+                    rightIcon,
                 } = strategyTx
 
                 const pnlAmount = currentValueUsd.minus(investedAmountUsd)
@@ -1108,11 +1177,10 @@ export async function getAccountLPPortfolio(address: string) {
                     : pnlAmount.div(investedAmountUsd).times(100).toFixed(20)
 
                 return {
-                    poolName: `Root Finance Strategy (${tx.intent_hash?.slice(0, 10)}...${tx.intent_hash?.slice(-5)})`,
-                    leftAlt: '',
-                    rightAlt: '',
-                    leftIcon: 'https://assets.radixdlt.com/icons/icon-xrd.png',
-                    rightIcon: 'https://app.rootfinance.xyz/favicon.ico',
+                    poolName: `${poolName} Root Finance Strategy`,
+                    leftIcon,
+                    rightIcon:
+                        rightIcon || 'https://app.rootfinance.xyz/favicon.ico',
                     provider,
                     invested: investedAmountUsd.toFixed(),
                     currentValue: currentValueUsd.toFixed(),
@@ -1127,6 +1195,8 @@ export async function getAccountLPPortfolio(address: string) {
                     loanCurrency,
                     borrowCurrency,
                     borrowAmount,
+                    leftAlt,
+                    rightAlt,
                 } as PoolPortfolioItem
             }),
         ])

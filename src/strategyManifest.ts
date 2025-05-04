@@ -246,14 +246,6 @@ export async function handleDefiplazaStrategy(
 
         const dfp2Borrowed = await getDfp2Borrowable(dfp2AmountManifest)
 
-        console.log('borrowed DFP2:', dfp2Borrowed)
-        console.log('base price:', poolDetails.ask_price)
-        console.log('base tvl:', poolDetails.baseTvl)
-        console.log('quote tvl:', poolDetails.quoteTvl)
-        console.log('quote tvl:', poolDetails.pairState)
-
-        // let ratio: Decimal = new Decimal(0)
-
         const { basePoolState, quotePoolState } = poolDetails
 
         const basePrice = new Decimal(poolDetails.last_price)

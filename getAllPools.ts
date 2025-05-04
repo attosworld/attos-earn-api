@@ -56,6 +56,8 @@ export async function getAllPools(): Promise<Pool[]> {
             right_alt: o.y.token.symbol,
             right_icon: o.y.token.icon_url,
             component: o.address,
+            left_token: o.x.token.address,
+            right_token: o.y.token.address,
         }
         return {
             type: 'ociswap',
@@ -135,6 +137,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_icon: base?.left_icon || '',
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
+                                left_token: d.baseToken,
+                                right_token: d.quoteToken,
                                 component: base.component,
                                 type: 'base',
                             }
@@ -149,6 +153,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
                                 component: base.component,
+                                left_token: d.baseToken,
+                                right_token: d.quoteToken,
                                 type: 'quote',
                             }
                         }
@@ -162,6 +168,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
                                 component: quote.component,
+                                left_token: d.baseToken,
+                                right_token: d.quoteToken,
                                 type: 'quote',
                             }
                         }
@@ -175,6 +183,8 @@ export async function getAllPools(): Promise<Pool[]> {
                                 right_alt: quote?.right_alt || '',
                                 right_icon: quote?.right_icon || '',
                                 component: quote.component,
+                                left_token: d.baseToken,
+                                right_token: d.quoteToken,
                                 type: 'quote',
                             }
                         }
@@ -290,6 +300,8 @@ export async function getAllPools(): Promise<Pool[]> {
                 .flatMap((arr) => arr)
         )
     ).flatMap((arr) => arr) as Pool[]
+
+    console.log('Pair names cache length:', Object.keys(PAIR_NAME_CACHE).length)
 
     return [...remappedOciswapPools, ...remappedDefiplazaPools]
         .filter((pool) => pool.tvl > 0)

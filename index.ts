@@ -28,7 +28,11 @@ export const PAIR_NAME_CACHE: Record<
         left_icon: string
         right_alt: string
         right_icon: string
+        left_token: string
+        right_token: string
         provider: string
+        component: string
+        type?: string
     }
 > = {}
 
@@ -85,6 +89,7 @@ export const POOLS_VOLUME_CACHE: Record<
 async function updatePoolsCache() {
     try {
         POOLS_CACHE = await getAllPools()
+        console.log('CACHE LENGTH ', POOLS_CACHE.length)
         console.log('Pools cache updated at', new Date().toISOString())
     } catch (error) {
         console.error('Error updating pools cache:', error)
@@ -132,6 +137,7 @@ async function updatePoolsVolumeCache() {
             )
         }
     }
+    console.log('Volume cache length ', Object.keys(POOLS_VOLUME_CACHE).length)
 }
 
 function shouldUpdatePool(poolComponent: string, now: number): boolean {

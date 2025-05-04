@@ -17,6 +17,7 @@ export const CHARGE_ROYALTY_METHOD = 'charge_strategy_royalty'
 export type EnhancedTransactionInfo = CommittedTransactionInfo & {
     liquidity?: 'added' | 'removed'
     strategy?: boolean
+    airdropToken?: string
 }
 
 const isAddLiquidityTx = (tx: CommittedTransactionInfo): boolean =>
@@ -61,12 +62,18 @@ const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
         tx.manifest_instructions?.includes(method)
     )
 
+const isIlisAirdrop = (tx: CommittedTransactionInfo): boolean =>
+    !!tx.manifest_instructions?.includes(
+        'component_rdx1czqa7dy572axllzl6mx57tgrz90rv36wggxn8ltneelj27688nr4jq'
+    ) && !!tx.manifest_instructions?.includes('airdrop')
+
 const isRemoveLiquidityTx = (tx: CommittedTransactionInfo): boolean =>
     !!tx.manifest_instructions?.includes('remove_liquidity')
 
 const processTransaction = (
     tx: CommittedTransactionInfo
 ): EnhancedTransactionInfo => {
+    if (isIlisAirdrop(tx)) return { ...tx, airdropToken: 'ilis' }
     if (isStrategyTx(tx)) return { ...tx, strategy: true }
     if (isAddLiquidityTx(tx)) return { ...tx, liquidity: 'added' }
     if (isRemoveLiquidityTx(tx)) return { ...tx, liquidity: 'removed' }
@@ -101,6 +108,7 @@ export const getAllAddLiquidityTxs = async (
     const processedItems = response.items
         .filter(
             (tx) =>
+                isIlisAirdrop(tx) ||
                 isAddLiquidityTx(tx) ||
                 isStrategyTx(tx) ||
                 isRemoveLiquidityTx(tx)
