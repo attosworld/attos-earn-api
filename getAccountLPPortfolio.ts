@@ -3,7 +3,12 @@ import type {
     ResourceInfo,
 } from '@calamari-radix/gateway-ez-mode/dist/types'
 import Decimal from 'decimal.js'
-import { BOOSTED_POOLS, gatewayApi, gatewayApiEzMode, PAIR_NAME_CACHE } from '.'
+import {
+    BOOSTED_POOLS_CACHE,
+    gatewayApi,
+    gatewayApiEzMode,
+    PAIR_NAME_CACHE,
+} from '.'
 import {
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     getAllAddLiquidityTxs,
@@ -43,6 +48,7 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
+import { getRootMarketPrices } from './src/strategies'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -1044,7 +1050,10 @@ export async function getAccountLPPortfolio(address: string) {
 
     const strategyTxs = liquidityPoolTxs.filter((tx) => tx.strategy)
 
-    const rootFinancePoolState = await getRootFinancePoolState()
+    const [rootFinancePoolState, rootPrices] = await Promise.all([
+        getRootFinancePoolState(),
+        getRootMarketPrices(),
+    ])
 
     const portfolioPnL: PoolPortfolioItem[] = (
         await Promise.all([
@@ -1055,7 +1064,7 @@ export async function getAccountLPPortfolio(address: string) {
                 let airdropToken = new Decimal(0)
 
                 if (
-                    BOOSTED_POOLS[
+                    BOOSTED_POOLS_CACHE[
                         PAIR_NAME_CACHE[lpAddress]?.component
                     ]?.docs?.includes('ilis-dao')
                 ) {

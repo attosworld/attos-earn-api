@@ -7,6 +7,7 @@ export interface TokenMetadata {
     description: string
     name: string
     info_url: string
+    tags: string[]
 }
 
 export const getTokenMetadata = async (
@@ -16,7 +17,11 @@ export const getTokenMetadata = async (
 
     return response.items.reduce((acc, m) => {
         if ('value' in m.value.typed) {
-            acc[m.key as keyof TokenMetadata] = m.value.typed.value as string
+            acc[m.key as keyof Omit<TokenMetadata, 'tags'>] = m.value.typed
+                .value as string
+        } else if (m.key == 'tags' && 'values' in m.value.typed) {
+            acc[m.key as keyof { tags: string[] }] = m.value.typed
+                .values as string[]
         }
         return acc
     }, {} as TokenMetadata)

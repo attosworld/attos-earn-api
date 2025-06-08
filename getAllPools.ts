@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js'
-import { PAIR_NAME_CACHE, BOOSTED_POOLS, TOKEN_INFO } from '.'
+import { PAIR_NAME_CACHE, BOOSTED_POOLS_CACHE, TOKEN_INFO_CACHE } from '.'
 import { getTokenMetadata } from './getTokenMetadata'
 import {
     getDefiplazaPools,
@@ -91,9 +91,9 @@ export async function getAllPools(): Promise<Pool[]> {
             left_name: o.x.token.name,
             right_name: o.y.token.name,
             deposit_link: `https://ociswap.com/pools/${o.address}`,
-            boosted: !!BOOSTED_POOLS[o.address],
-            ...(BOOSTED_POOLS[o.address] && {
-                incentivised_lp_docs: BOOSTED_POOLS[o.address].docs,
+            boosted: !!BOOSTED_POOLS_CACHE[o.address],
+            ...(BOOSTED_POOLS_CACHE[o.address] && {
+                incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
         } as Pool
     })
@@ -106,26 +106,25 @@ export async function getAllPools(): Promise<Pool[]> {
                         getVolumeAndTokenMetadata(d.baseToken),
                         getVolumeAndTokenMetadata(d.quoteToken),
                     ]).then(async ([base, quote]) => {
-                        if (!quote && TOKEN_INFO[d.quoteToken]) {
+                        if (!quote && TOKEN_INFO_CACHE[d.quoteToken]) {
                             quote = {} as VolumeAndTokenMetadata
 
                             if (quote) {
                                 quote.right_alt =
-                                    TOKEN_INFO[d.quoteToken].symbol
+                                    TOKEN_INFO_CACHE[d.quoteToken].symbol
                                 quote.right_icon =
-                                    TOKEN_INFO[d.quoteToken].icon_url
+                                    TOKEN_INFO_CACHE[d.quoteToken].icon_url
                             }
                         } else {
-                            TOKEN_INFO[d.quoteToken] = await getTokenMetadata(
-                                d.quoteToken
-                            )
+                            TOKEN_INFO_CACHE[d.quoteToken] =
+                                await getTokenMetadata(d.quoteToken)
                             quote = {} as VolumeAndTokenMetadata
 
                             if (quote) {
                                 quote.right_alt =
-                                    TOKEN_INFO[d.quoteToken].symbol
+                                    TOKEN_INFO_CACHE[d.quoteToken].symbol
                                 quote.right_icon =
-                                    TOKEN_INFO[d.quoteToken].icon_url
+                                    TOKEN_INFO_CACHE[d.quoteToken].icon_url
                             }
                         }
 
@@ -248,12 +247,11 @@ export async function getAllPools(): Promise<Pool[]> {
                                 right_name: quote?.right_name || '',
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
-                                boosted: !!BOOSTED_POOLS[d.address],
-                                ...(BOOSTED_POOLS[d.address] && {
+                                boosted: !!BOOSTED_POOLS_CACHE[d.address],
+                                ...(BOOSTED_POOLS_CACHE[d.address] && {
                                     incentivised_lp_docs:
-                                        BOOSTED_POOLS[d.address].docs,
+                                        BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
-                                classification_tags: [],
                                 volume_per_day: base?.volume_per_day,
                             },
                             {
@@ -287,10 +285,10 @@ export async function getAllPools(): Promise<Pool[]> {
                                 left_name: base?.left_name || '',
                                 right_name: quote?.right_name || '',
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side}`,
-                                boosted: !!BOOSTED_POOLS[d.address],
-                                ...(BOOSTED_POOLS[d.address] && {
+                                boosted: !!BOOSTED_POOLS_CACHE[d.address],
+                                ...(BOOSTED_POOLS_CACHE[d.address] && {
                                     incentivised_lp_docs:
-                                        BOOSTED_POOLS[d.address].docs,
+                                        BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
                                 volume_per_day: base?.volume_per_day,
                             } as Pool,

@@ -9,10 +9,9 @@ export const OLD_ATTOS_ROYALTY_COMPONENT =
 
 export const OLD_CHARGE_ROYALTY_METHOD = 'charge_royalty'
 
-export const ATTOS_ROYALTY_COMPONENT =
-    'component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6'
+export const ATTOS_ROYALTY_COMPONENT = OLD_ATTOS_ROYALTY_COMPONENT
 
-export const CHARGE_ROYALTY_METHOD = 'charge_strategy_royalty'
+export const CHARGE_ROYALTY_METHOD = OLD_CHARGE_ROYALTY_METHOD
 
 export type EnhancedTransactionInfo = CommittedTransactionInfo & {
     liquidity?: 'added' | 'removed'

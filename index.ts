@@ -8,16 +8,53 @@ import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
 import { getOciswapPoolVolumePerDay } from './src/ociswap'
 import { STRATEGY_MANIFEST } from './src/strategyManifest'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { join } from 'path'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
 export const gatewayApi = gatewayApiEzMode.gateway
 
-export const TOKEN_INFO: Record<string, TokenMetadata> = {
+const CACHE_FILE_PATH = join(process.cwd(), 'pools_volume_cache.json')
+
+export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
     resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq:
         await getTokenMetadata(
             'resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq'
         ),
+}
+
+function readCacheFromFile(
+    poolComponent: string
+): { data: number[]; lastUpdated: number } | null {
+    if (existsSync(CACHE_FILE_PATH)) {
+        try {
+            const fileContent = readFileSync(CACHE_FILE_PATH, 'utf-8')
+            const cache = JSON.parse(fileContent)
+            return cache[poolComponent] || null
+        } catch (error) {
+            console.error('Error reading cache from file:', error)
+            return null
+        }
+    }
+    return null
+}
+
+function writeCacheToFile(
+    poolComponent: string,
+    data: number[],
+    lastUpdated: number
+) {
+    try {
+        writeFileSync(
+            CACHE_FILE_PATH,
+            JSON.stringify({ data, lastUpdated }),
+            'utf-8'
+        )
+        console.log(`Cache updated for pool ${poolComponent}`)
+    } catch (error) {
+        console.error('Error writing cache to file:', error)
+    }
 }
 
 export const PAIR_NAME_CACHE: Record<
@@ -36,7 +73,7 @@ export const PAIR_NAME_CACHE: Record<
     }
 > = {}
 
-export const BOOSTED_POOLS: Record<string, { docs: string }> = {
+export const BOOSTED_POOLS_CACHE: Record<string, { docs: string }> = {
     component_rdx1cqvxkaazmpnvg3f9ufc5n2msv6x7ztjdusdm06lhtf5n7wr8guggg5: {
         docs: 'https://docs.astrolescent.com/astrolescent-docs/tokens/rewards/providing-liquidity',
     },
@@ -57,15 +94,6 @@ export const BOOSTED_POOLS: Record<string, { docs: string }> = {
     },
     component_rdx1cz5jtknztc26heh2w0kmrx25h0k7zlhrthrnxum5yq6jvlgal46n2g: {
         docs: 'https://wowoproject.com/wowo-bank/',
-    },
-    component_rdx1cr9kzxefdnadsrmajswvenf803fgw8j4h8jlcse4z3m2t3q384xdup: {
-        docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning',
-    },
-    component_rdx1cr8hdtxhz7k6se6pgyrqa66sdlc06kjchfzjcl6pl2er8ratyfyre8: {
-        docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning',
-    },
-    component_rdx1cz5fuzruncczpsz6kksz7zjvg3u4a94ll97ua868357vhzme490ymt: {
-        docs: 'https://howto.hug.meme/proof-of-hug/intro-to-poh/liquidity-provisioning',
     },
 }
 
@@ -88,6 +116,7 @@ export const POOLS_VOLUME_CACHE: Record<
 // Function to update the cache
 async function updatePoolsCache() {
     try {
+        POOLS_CACHE = []
         POOLS_CACHE = await getAllPools()
         console.log('CACHE LENGTH ', POOLS_CACHE.length)
         console.log('Pools cache updated at', new Date().toISOString())
@@ -120,10 +149,7 @@ async function updatePoolsVolumeCache() {
                 pool.component,
                 7
             )
-            POOLS_VOLUME_CACHE[pool.component] = {
-                data: volumeData.volume,
-                lastUpdated: now,
-            }
+            writeCacheToFile(pool.component, volumeData.volume, now)
             console.log(
                 `Updated volume cache for pool ${pool.component} at ${new Date(now).toISOString()}`
             )
@@ -137,11 +163,10 @@ async function updatePoolsVolumeCache() {
             )
         }
     }
-    console.log('Volume cache length ', Object.keys(POOLS_VOLUME_CACHE).length)
 }
 
 function shouldUpdatePool(poolComponent: string, now: number): boolean {
-    const cache = POOLS_VOLUME_CACHE[poolComponent]
+    const cache = readCacheFromFile(poolComponent)
     if (!cache) return true
 
     const hoursSinceLastUpdate = (now - cache.lastUpdated) / (1000 * 60 * 60)
@@ -165,10 +190,10 @@ await updatePoolsCache()
 
 await getStrategies()
 
-// Set up background job to update cache every 5 minutes
+// Update cache every 5 minutes
 setInterval(updatePoolsCache, CACHE_DURATION)
 
-// Update volume cache once per days
+// Update volume cache every 15 minutes
 setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
 
 const port = process.env.PORT || 3000
@@ -242,7 +267,7 @@ Bun.serve({
                     })
                 }
                 case 'ociswap': {
-                    const cache = POOLS_VOLUME_CACHE[poolComponent]
+                    const cache = readCacheFromFile(poolComponent)
                     if (cache) {
                         return new Response(
                             JSON.stringify({ volume_per_day: cache.data }),
@@ -261,10 +286,11 @@ Bun.serve({
                         poolComponent,
                         7
                     )
-                    POOLS_VOLUME_CACHE[poolComponent] = {
-                        data: volumeData.volume,
-                        lastUpdated: Date.now(),
-                    }
+                    writeCacheToFile(
+                        poolComponent,
+                        volumeData.volume,
+                        Date.now()
+                    )
 
                     return new Response(
                         JSON.stringify({ volume_per_day: volumeData.volume }),
