@@ -46,9 +46,15 @@ function writeCacheToFile(
     lastUpdated: number
 ) {
     try {
+        const fileContent = readFileSync(CACHE_FILE_PATH, 'utf-8')
+        const cache = JSON.parse(fileContent)
+
         writeFileSync(
             CACHE_FILE_PATH,
-            JSON.stringify({ data, lastUpdated }),
+            JSON.stringify({
+                ...cache,
+                [poolComponent]: { data, lastUpdated },
+            }),
             'utf-8'
         )
         console.log(`Cache updated for pool ${poolComponent}`)
@@ -200,9 +206,40 @@ const port = process.env.PORT || 3000
 
 Bun.serve({
     port,
+    idleTimeout: 30,
     async fetch(req) {
         const url = new URL(req.url)
         if (url.pathname === '/pools') {
+            // const mode = url.searchParams.get('mode')
+
+            // if (mode === 'categorized') {
+            //     const poolsByTags = POOLS_CACHE?.reduce(
+            //         (acc, pool) => {
+            //             if (pool.tags.length) {
+            //                 pool.tags.forEach((tag) => {
+            //                     if (!acc[tag]) {
+            //                         acc[tag] = []
+            //                     }
+            //                     acc[tag].push(pool)
+            //                 })
+            //             } else {
+            //                 if (!acc.uncategorized) {
+            //                     acc.uncategorized = []
+            //                 }
+            //                 acc.uncategorized.push(pool)
+            //             }
+            //             return acc
+            //         },
+            //         {} as Record<string, Pool[]>
+            //     )
+
+            //     return new Response(JSON.stringify(poolsByTags), {
+            //         headers: {
+            //             'Content-Type': 'application/json',
+            //             ...corsHeaders,
+            //         },
+            //     })
+            // }
             // Always return the cached data, which is updated in the background
             return new Response(JSON.stringify(POOLS_CACHE), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },

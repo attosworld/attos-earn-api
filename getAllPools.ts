@@ -39,7 +39,7 @@ export interface Pool {
 }
 
 export async function getAllPools(): Promise<Pool[]> {
-    const [ociPools, dfpPools] = await Promise.all([
+    const [ociPools, dfpPools, tokens] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
         tokensRequest(),
@@ -95,6 +95,10 @@ export async function getAllPools(): Promise<Pool[]> {
             ...(BOOSTED_POOLS_CACHE[o.address] && {
                 incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
+            tags: [
+                ...(tokens[o.x.token.address]?.tags || []),
+                ...(tokens[o.y.token.address]?.tags || []),
+            ],
         } as Pool
     })
 
@@ -253,6 +257,10 @@ export async function getAllPools(): Promise<Pool[]> {
                                         BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
                                 volume_per_day: base?.volume_per_day,
+                                tags: [
+                                    ...(tokens[d.baseToken].tags || []),
+                                    ...(tokens[d.quoteToken].tags || []),
+                                ],
                             },
                             {
                                 type: 'defiplaza',
@@ -291,6 +299,10 @@ export async function getAllPools(): Promise<Pool[]> {
                                         BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
                                 volume_per_day: base?.volume_per_day,
+                                tags: [
+                                    ...(tokens[d.baseToken].tags || []),
+                                    ...(tokens[d.quoteToken].tags || []),
+                                ],
                             } as Pool,
                         ]
                     })
