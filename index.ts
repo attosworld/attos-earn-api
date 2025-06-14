@@ -66,7 +66,7 @@ function writeCacheToFile(
 
         writeFileSync(
             `${CACHE_DIR}/${poolComponent}.json`,
-            JSON.stringify({ data: { ...data, ...cache.data }, lastUpdated }),
+            JSON.stringify({ data: { ...cache.data, ...data }, lastUpdated }),
             'utf-8'
         )
         console.log(`Cache updated for pool ${poolComponent}`)

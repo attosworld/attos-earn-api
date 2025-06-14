@@ -162,40 +162,38 @@ export interface VolumeAndTokenMetadata {
         volume_24h: number
         volume_7d: number
     }
-    volume_per_day: number[]
+    volume_per_day: Record<string, number>
 }
 
 function getLastSevenDaysVolume(
     stats: Array<{ date: number; volumeUSD: number }>
-): number[] {
+): Record<string, number> {
     const now = new Date()
     now.setHours(0, 0, 0, 0) // Set to start of today
     const sevenDaysAgo = new Date(now)
     sevenDaysAgo.setDate(now.getDate() - 6) // 7 days including today
 
-    const volumeMap = new Map<number, number>()
+    const volumeMap: Record<string, number> = {}
 
     // Initialize all 7 days with 0 volume
     for (let i = 0; i < 7; i++) {
         const date = new Date(sevenDaysAgo)
         date.setDate(sevenDaysAgo.getDate() + i)
-        volumeMap.set(date.getTime(), 0)
+        const dateString = date.toISOString().split('T')[0] // Format as YYYY-MM-DD
+        volumeMap[dateString] = 0
     }
 
     // Fill in actual volumes where we have data
     stats.forEach((stat) => {
         const statDate = new Date(stat.date * 1000) // Convert seconds to milliseconds
         statDate.setHours(0, 0, 0, 0)
-        const statTime = statDate.getTime()
-        if (volumeMap.has(statTime)) {
-            volumeMap.set(statTime, stat.volumeUSD)
+        const dateString = statDate.toISOString().split('T')[0]
+        if (dateString in volumeMap) {
+            volumeMap[dateString] = stat.volumeUSD
         }
     })
 
-    // Convert map to array, sorted from most recent to oldest
-    return Array.from(volumeMap.entries())
-        .sort((a, b) => b[0] - a[0])
-        .map((entry) => entry[1])
+    return volumeMap
 }
 
 export async function getVolumeAndTokenMetadata(
