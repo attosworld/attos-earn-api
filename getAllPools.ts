@@ -8,6 +8,10 @@ import {
 } from './src/defiplaza'
 import { ociswapPools as getOciswapPools } from './src/ociswap'
 import { tokensRequest } from './src/astrolescent'
+import {
+    DFP2_RESOURCE_ADDRESS,
+    XRD_RESOURCE_ADDRESS,
+} from './src/resourceAddresses'
 
 export interface Pool {
     type: string
@@ -38,7 +42,7 @@ export interface Pool {
     volume_per_day?: number[]
 }
 
-export async function getAllPools(): Promise<Pool[]> {
+export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
     const [ociPools, dfpPools, tokens] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
@@ -96,8 +100,14 @@ export async function getAllPools(): Promise<Pool[]> {
                 incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
             tags: [
-                ...(tokens[o.x.token.address]?.tags || []),
-                ...(tokens[o.y.token.address]?.tags || []),
+                ...(bridgedTokens.has(o.x.token.address) ? ['wrapped'] : []),
+                ...(bridgedTokens.has(o.y.token.address) ? ['wrapped'] : []),
+                ...((o.x.token.address !== XRD_RESOURCE_ADDRESS &&
+                    tokens[o.x.token.address]?.tags) ||
+                    []),
+                ...((o.y.token.address !== XRD_RESOURCE_ADDRESS &&
+                    tokens[o.y.token.address]?.tags) ||
+                    []),
             ],
         } as Pool
     })
@@ -258,8 +268,20 @@ export async function getAllPools(): Promise<Pool[]> {
                                 }),
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
-                                    ...(tokens[d.baseToken].tags || []),
-                                    ...(tokens[d.quoteToken].tags || []),
+                                    ...(bridgedTokens.has(d.baseToken)
+                                        ? ['wrapped']
+                                        : []),
+                                    ...(bridgedTokens.has(d.quoteToken)
+                                        ? ['wrapped']
+                                        : []),
+                                    ...((d.baseToken !==
+                                        DFP2_RESOURCE_ADDRESS &&
+                                        tokens[d.baseToken].tags) ||
+                                        []),
+                                    ...((d.quoteToken !==
+                                        DFP2_RESOURCE_ADDRESS &&
+                                        tokens[d.quoteToken].tags) ||
+                                        []),
                                 ],
                             },
                             {
@@ -300,8 +322,20 @@ export async function getAllPools(): Promise<Pool[]> {
                                 }),
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
-                                    ...(tokens[d.baseToken].tags || []),
-                                    ...(tokens[d.quoteToken].tags || []),
+                                    ...(bridgedTokens.has(d.baseToken)
+                                        ? ['wrapped']
+                                        : []),
+                                    ...(bridgedTokens.has(d.quoteToken)
+                                        ? ['wrapped']
+                                        : []),
+                                    ...((d.baseToken !==
+                                        DFP2_RESOURCE_ADDRESS &&
+                                        tokens[d.baseToken].tags) ||
+                                        []),
+                                    ...((d.quoteToken !==
+                                        DFP2_RESOURCE_ADDRESS &&
+                                        tokens[d.quoteToken].tags) ||
+                                        []),
                                 ],
                             } as Pool,
                         ]
@@ -314,7 +348,7 @@ export async function getAllPools(): Promise<Pool[]> {
     console.log('Pair names cache length:', Object.keys(PAIR_NAME_CACHE).length)
 
     return [...remappedOciswapPools, ...remappedDefiplazaPools]
-        .filter((pool) => pool.tvl > 0)
+        .filter((pool) => pool.tvl > 1 && pool.volume_7d > 0)
         .sort((a, b) => {
             return (
                 b.volume_7d - a.volume_7d ||

@@ -515,11 +515,12 @@ export async function getOciswapPoolEvents(
     days: number = 7,
     items: PoolEvent[] = [],
     cursor: number = 0,
-    limit: number = 100
+    limit: number = 100,
+    startDate?: Date
 ): Promise<PoolEvent[]> {
     const options = { method: 'GET', headers: { accept: 'application/json' } }
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - days)
+    const cutoffDate =
+        startDate || new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 
     try {
         const response = await fetch(
@@ -533,13 +534,22 @@ export async function getOciswapPoolEvents(
 
         const result = (await response.json()) as PoolEventsResponse
 
-        const filteredEvents = result.data.filter(
-            (event) => new Date(event.timestamp) >= cutoffDate
-        )
+        let reachedCutoff = false
+        const filteredEvents = result.data.filter((event) => {
+            const eventDate = new Date(event.timestamp)
+            if (eventDate >= cutoffDate) {
+                return true
+            } else {
+                reachedCutoff = true
+                return false
+            }
+        })
+
         const newItems = [...items, ...filteredEvents]
 
         if (
             result.next_cursor !== null &&
+            !reachedCutoff &&
             filteredEvents.length === result.data.length
         ) {
             // If there's a next cursor and we haven't reached the cutoff date, make a recursive call
@@ -548,7 +558,8 @@ export async function getOciswapPoolEvents(
                 days,
                 newItems,
                 result.next_cursor,
-                limit
+                limit,
+                startDate
             )
         }
 
@@ -563,20 +574,25 @@ export async function getOciswapPoolEvents(
 
 export async function getOciswapPoolVolumePerDay(
     poolIdentifier: string,
-    days: number = 7
-): Promise<{ pool: string; volume: number[] }> {
-    const events = await getOciswapPoolEvents(poolIdentifier, days)
+    startDate: Date = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // Default to 7 days ago
+): Promise<{ pool: string; volume: Record<string, number> }> {
+    const events = await getOciswapPoolEvents(
+        poolIdentifier,
+        0,
+        [],
+        0,
+        100,
+        startDate
+    )
 
-    // Create a map to store volume per day
-    const volumePerDay = new Map<string, number>()
+    // Create an object to store volume per day
+    const volumePerDay: Record<string, number> = {}
 
-    // Initialize the last 'days' number of days with 0 volume
+    // Initialize days from start date to today with 0 volume
     const now = new Date()
-    for (let i = 0; i < days; i++) {
-        const date = new Date(now)
-        date.setDate(now.getDate() - i)
-        const dateString = date.toISOString().split('T')[0]
-        volumePerDay.set(dateString, 0)
+    for (let d = new Date(startDate); d <= now; d.setDate(d.getDate() + 1)) {
+        const dateString = d.toISOString().split('T')[0]
+        volumePerDay[dateString] = 0
     }
 
     // Process swap events
@@ -585,20 +601,14 @@ export async function getOciswapPoolVolumePerDay(
             const date = new Date(event.timestamp)
             const dateString = date.toISOString().split('T')[0]
 
-            if (volumePerDay.has(dateString)) {
-                const currentVolume = volumePerDay.get(dateString) || 0
+            if (dateString in volumePerDay) {
                 const eventVolume = parseFloat(event.volume.usd)
-                volumePerDay.set(dateString, currentVolume + eventVolume)
+                volumePerDay[dateString] += eventVolume
             }
         }
     })
 
-    // Convert map to array, sorted from oldest to newest
-    const sortedVolumes = Array.from(volumePerDay.entries())
-        .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-        .map((entry) => entry[1])
-
-    return { pool: poolIdentifier, volume: sortedVolumes }
+    return { pool: poolIdentifier, volume: volumePerDay }
 }
 
 export function closeOciswapLpPosition({

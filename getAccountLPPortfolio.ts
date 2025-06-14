@@ -1107,6 +1107,7 @@ export async function getAccountLPPortfolio(address: string) {
 
                 return {
                     poolName: PAIR_NAME_CACHE[lpAddress]?.name,
+                    component: PAIR_NAME_CACHE[lpAddress]?.component,
                     leftAlt: PAIR_NAME_CACHE[lpAddress]?.left_alt,
                     rightAlt: PAIR_NAME_CACHE[lpAddress]?.right_alt,
                     leftIcon: PAIR_NAME_CACHE[lpAddress]?.left_icon,

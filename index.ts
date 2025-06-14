@@ -8,14 +8,12 @@ import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
 import { getOciswapPoolVolumePerDay } from './src/ociswap'
 import { STRATEGY_MANIFEST } from './src/strategyManifest'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import type { MetadataGlobalAddressArrayValue } from '@radixdlt/babylon-gateway-api-sdk'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
 export const gatewayApi = gatewayApiEzMode.gateway
-
-const CACHE_FILE_PATH = join(process.cwd(), 'pools_volume_cache.json')
 
 export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
     resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq:
@@ -24,14 +22,28 @@ export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
         ),
 }
 
+const CACHE_DIR = process.env.CACHE_DIR || './cache'
+
+if (!existsSync(CACHE_DIR)) {
+    // If it doesn't exist, create the directory
+    mkdirSync(CACHE_DIR)
+
+    console.log(`Directory '${CACHE_DIR}' created.`)
+} else {
+    console.log(`Directory '${CACHE_DIR}' already exists.`)
+}
+
 function readCacheFromFile(
     poolComponent: string
 ): { data: number[]; lastUpdated: number } | null {
-    if (existsSync(CACHE_FILE_PATH)) {
+    if (existsSync(`${CACHE_DIR}/${poolComponent}.json`)) {
         try {
-            const fileContent = readFileSync(CACHE_FILE_PATH, 'utf-8')
+            const fileContent = readFileSync(
+                `${CACHE_DIR}/${poolComponent}.json`,
+                'utf-8'
+            )
             const cache = JSON.parse(fileContent)
-            return cache[poolComponent] || null
+            return cache || null
         } catch (error) {
             console.error('Error reading cache from file:', error)
             return null
@@ -42,19 +54,19 @@ function readCacheFromFile(
 
 function writeCacheToFile(
     poolComponent: string,
-    data: number[],
+    data: Record<string, number>,
     lastUpdated: number
 ) {
     try {
-        const fileContent = readFileSync(CACHE_FILE_PATH, 'utf-8')
-        const cache = JSON.parse(fileContent)
+        const cache = existsSync(`${CACHE_DIR}/${poolComponent}.json`)
+            ? JSON.parse(
+                  readFileSync(`${CACHE_DIR}/${poolComponent}.json`, 'utf-8')
+              )
+            : { data: {}, lastUpdated: 0 }
 
         writeFileSync(
-            CACHE_FILE_PATH,
-            JSON.stringify({
-                ...cache,
-                [poolComponent]: { data, lastUpdated },
-            }),
+            `${CACHE_DIR}/${poolComponent}.json`,
+            JSON.stringify({ data: { ...data, ...cache.data }, lastUpdated }),
             'utf-8'
         )
         console.log(`Cache updated for pool ${poolComponent}`)
@@ -114,21 +126,29 @@ export let POOLS_CACHE: Pool[] | null = null
 
 const CACHE_DURATION = 60000
 
-export const POOLS_VOLUME_CACHE: Record<
-    string,
-    { data: number[]; lastUpdated: number }
-> = {}
-
 // Function to update the cache
-async function updatePoolsCache() {
+async function updatePoolsCache(bridgedTokens: Set<string>) {
     try {
         POOLS_CACHE = []
-        POOLS_CACHE = await getAllPools()
+        POOLS_CACHE = await getAllPools(bridgedTokens)
         console.log('CACHE LENGTH ', POOLS_CACHE.length)
         console.log('Pools cache updated at', new Date().toISOString())
     } catch (error) {
         console.error('Error updating pools cache:', error)
     }
+}
+
+async function getBridgedTokens() {
+    return new Set(
+        (
+            (
+                await gatewayApi.state.getEntityMetadata(
+                    'account_rdx1cxamqz2f03s8g6smfz32q2gr3prhwh3gqdkdk93d8q8srp8d38cs7e'
+                )
+            ).items.find((k) => k.key === 'claimed_entities')?.value
+                .typed as MetadataGlobalAddressArrayValue
+        ).values
+    )
 }
 
 // Function to update the cache
@@ -137,24 +157,39 @@ async function updatePoolsVolumeCache() {
 
     const now = Date.now()
 
-    const pools = POOLS_CACHE.filter(
-        (p) => p.type === 'ociswap' && shouldUpdatePool(p.component, now)
-    ).sort((a, b) => {
-        return (
-            b.volume_7d - a.volume_7d ||
-            b.bonus_7d - a.bonus_7d ||
-            b.tvl - a.tvl
-        )
-    })
+    const pools = POOLS_CACHE.filter((p) => p.type === 'ociswap').sort(
+        (a, b) => {
+            return (
+                b.volume_7d - a.volume_7d ||
+                b.bonus_7d - a.bonus_7d ||
+                b.tvl - a.tvl
+            )
+        }
+    )
 
-    const poolsToUpdate = pools.slice(0, 10)
+    const poolsToUpdate = pools.slice(0, 50)
 
     for (const pool of poolsToUpdate) {
         try {
-            const volumeData = await getOciswapPoolVolumePerDay(
-                pool.component,
-                7
+            const lastUpdated = existsSync(
+                `${CACHE_DIR}/${pool.component}.json`
             )
+                ? new Date(
+                      JSON.parse(
+                          readFileSync(
+                              `${CACHE_DIR}/${pool.component}.json`,
+                              'utf-8'
+                          )
+                      ).lastUpdated
+                  )
+                : undefined
+
+            lastUpdated?.setHours(1, 0, 0, 0)
+            console.log(lastUpdated)
+            const volumeData = lastUpdated
+                ? await getOciswapPoolVolumePerDay(pool.component, lastUpdated)
+                : await getOciswapPoolVolumePerDay(pool.component)
+
             writeCacheToFile(pool.component, volumeData.volume, now)
             console.log(
                 `Updated volume cache for pool ${pool.component} at ${new Date(now).toISOString()}`
@@ -171,33 +206,17 @@ async function updatePoolsVolumeCache() {
     }
 }
 
-function shouldUpdatePool(poolComponent: string, now: number): boolean {
-    const cache = readCacheFromFile(poolComponent)
-    if (!cache) return true
-
-    const hoursSinceLastUpdate = (now - cache.lastUpdated) / (1000 * 60 * 60)
-    const pool = POOLS_CACHE?.find((p) => p.component === poolComponent)
-
-    if (!pool) return true
-
-    // Update more frequently for high-volume pools
-    if (pool.volume_7d > 1000000) return hoursSinceLastUpdate >= 1
-    if (pool.volume_7d > 100000) return hoursSinceLastUpdate >= 3
-    if (pool.volume_7d > 10000) return hoursSinceLastUpdate >= 6
-
-    // For low-volume pools, update once a day
-    return hoursSinceLastUpdate >= 24
-}
+const BRIDGED_TOKENS = await getBridgedTokens()
 
 // Initial cache update
-await updatePoolsCache()
+await updatePoolsCache(BRIDGED_TOKENS)
 
-// await updatePoolsVolumeCache()
+await updatePoolsVolumeCache()
 
 await getStrategies()
 
 // Update cache every 5 minutes
-setInterval(updatePoolsCache, CACHE_DURATION)
+setInterval(() => updatePoolsCache(BRIDGED_TOKENS), CACHE_DURATION)
 
 // Update volume cache every 15 minutes
 setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
@@ -319,10 +338,8 @@ Bun.serve({
                     }
 
                     // If not in cache, fetch and cache the data
-                    const volumeData = await getOciswapPoolVolumePerDay(
-                        poolComponent,
-                        7
-                    )
+                    const volumeData =
+                        await getOciswapPoolVolumePerDay(poolComponent)
                     writeCacheToFile(
                         poolComponent,
                         volumeData.volume,
