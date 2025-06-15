@@ -11,6 +11,7 @@ import { tokensRequest } from './src/astrolescent'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
+    XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
 
 export interface Pool {
@@ -41,6 +42,15 @@ export interface Pool {
     incentivised_lp_docs: string
     volume_per_day?: number[]
 }
+
+const STABLECOIN_ADDRESSES = new Set([
+    // STAB
+    'resource_rdx1t40lchq8k38eu4ztgve5svdpt0uxqmkvpy4a2ghnjcxjtdxttj9uam',
+    // XUSDC
+    XUSDC_RESOURCE_ADDRESS,
+    // XUSDT
+    'resource_rdx1thrvr3xfs2tarm2dl9emvs26vjqxu6mqvfgvqjne940jv0lnrrg7rw',
+])
 
 export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
     const [ociPools, dfpPools, tokens] = await Promise.all([
@@ -100,6 +110,12 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                 incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
             tags: [
+                ...(STABLECOIN_ADDRESSES.has(o.x.token.address)
+                    ? ['stablecoin']
+                    : []),
+                ...(STABLECOIN_ADDRESSES.has(o.y.token.address)
+                    ? ['stablecoin']
+                    : []),
                 ...(bridgedTokens.has(o.x.token.address) ? ['wrapped'] : []),
                 ...(bridgedTokens.has(o.y.token.address) ? ['wrapped'] : []),
                 ...((o.x.token.address !== XRD_RESOURCE_ADDRESS &&
@@ -268,6 +284,12 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 }),
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
+                                    ...(STABLECOIN_ADDRESSES.has(d.baseToken)
+                                        ? ['stablecoin']
+                                        : []),
+                                    ...(STABLECOIN_ADDRESSES.has(d.quoteToken)
+                                        ? ['stablecoin']
+                                        : []),
                                     ...(bridgedTokens.has(d.baseToken)
                                         ? ['wrapped']
                                         : []),
@@ -322,6 +344,12 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 }),
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
+                                    ...(STABLECOIN_ADDRESSES.has(d.baseToken)
+                                        ? ['stablecoin']
+                                        : []),
+                                    ...(STABLECOIN_ADDRESSES.has(d.quoteToken)
+                                        ? ['stablecoin']
+                                        : []),
                                     ...(bridgedTokens.has(d.baseToken)
                                         ? ['wrapped']
                                         : []),
