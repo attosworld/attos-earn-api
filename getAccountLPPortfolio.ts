@@ -265,27 +265,6 @@ export async function previewTx(manifest: string) {
     })
 }
 
-export function astrolescentRequest(
-    leftPair: string,
-    rightPair: string,
-    amount: string,
-    accountAddress: string
-) {
-    return fetch(`https://api.astrolescent.com/partner/selfisocial/swap`, {
-        headers: {
-            accept: 'application/json, text/plain, */*',
-        },
-        mode: 'cors',
-        method: 'POST',
-        body: JSON.stringify({
-            inputToken: leftPair,
-            outputToken: rightPair,
-            inputAmount: amount,
-            fromAddress: accountAddress,
-        }),
-    })
-}
-
 export interface LpInfo {
     type: 'defiplaza' | 'ociswap' | 'ociswap_v2'
     balance?: string

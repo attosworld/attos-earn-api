@@ -10,6 +10,10 @@ import { getOciswapPoolVolumePerDay } from './src/ociswap'
 import { STRATEGY_MANIFEST } from './src/strategyManifest'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import type { MetadataGlobalAddressArrayValue } from '@radixdlt/babylon-gateway-api-sdk'
+import {
+    astrolescentRequest,
+    type AstrolescentSwapRequest,
+} from './src/astrolescent'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -211,7 +215,7 @@ const BRIDGED_TOKENS = await getBridgedTokens()
 // Initial cache update
 await updatePoolsCache(BRIDGED_TOKENS)
 
-await updatePoolsVolumeCache()
+await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
 
 await getStrategies()
 
@@ -491,6 +495,30 @@ Bun.serve({
                     pools: POOLS_CACHE?.length || 0,
                     strategies: Object.keys(STRATEGY_MANIFEST).length || 0,
                 }),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        // Handle OPTIONS requests for CORS preflight
+        if (req.method === 'OPTIONS') {
+            return new Response(null, {
+                status: 204,
+                headers: corsHeaders,
+            })
+        }
+
+        if (url.pathname === '/swap' && req.method === 'POST') {
+            const body = (await req.json()) as AstrolescentSwapRequest
+
+            return new Response(
+                JSON.stringify(
+                    await astrolescentRequest(body).then((res) => res.json())
+                ),
                 {
                     headers: {
                         'Content-Type': 'application/json',

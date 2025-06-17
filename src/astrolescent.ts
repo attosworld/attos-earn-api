@@ -43,3 +43,50 @@ export const tokensRequest = async () => {
             )
         })
 }
+
+export type AstrolascentSwapResponse = {
+    inputTokens: number
+    outputTokens: number
+    priceImpact: number
+    swapFee: string
+    manifest: string
+    routes: Array<{
+        pools: Array<{
+            type: string
+            baseToken: string
+            quoteToken: string
+        }>
+        startPrice: string
+        endPrice: string
+        impact: number
+        tokensIn: number
+        tokensOut: number
+    }>
+}
+
+export interface AstrolescentSwapRequest {
+    inputToken: string
+    outputToken: string
+    amount: string
+    accountAddress: string
+}
+
+export const astrolescentRequest = ({
+    inputToken,
+    outputToken,
+    amount,
+    accountAddress,
+}: AstrolescentSwapRequest) => {
+    return fetch(`https://api.astrolescent.com/partner/selfisocial/swap`, {
+        headers: {
+            accept: 'application/json, text/plain, */*',
+        },
+        method: 'POST',
+        body: JSON.stringify({
+            inputToken: inputToken,
+            outputToken: outputToken,
+            inputAmount: amount,
+            fromAddress: accountAddress,
+        }),
+    })
+}
