@@ -232,7 +232,7 @@ Bun.serve({
     idleTimeout: 30,
     async fetch(req) {
         const url = new URL(req.url)
-        if (url.pathname === '/pools') {
+        if (url.pathname === '/pools' && req.method === 'GET') {
             // const mode = url.searchParams.get('mode')
 
             // if (mode === 'categorized') {
@@ -269,7 +269,7 @@ Bun.serve({
             })
         }
 
-        if (url.pathname.startsWith('/pools/volume')) {
+        if (url.pathname.startsWith('/pools/volume') && req.method === 'GET') {
             const poolComponent = url.pathname.split('/')[3]
             const provider = url.searchParams.get('provider')
 
@@ -368,7 +368,7 @@ Bun.serve({
             })
         }
 
-        if (url.pathname === '/portfolio') {
+        if (url.pathname === '/portfolio' && req.method === 'GET') {
             const address = url.searchParams.get('address')
 
             if (!address || !address.startsWith('account_rdx')) {
@@ -391,13 +391,13 @@ Bun.serve({
             })
         }
 
-        if (url.pathname === '/strategies') {
+        if (url.pathname === '/strategies' && req.method === 'GET') {
             return new Response(JSON.stringify(await getStrategies()), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
             })
         }
 
-        if (url.pathname === '/strategies/execute') {
+        if (url.pathname === '/strategies/execute' && req.method === 'POST') {
             const strategyId = url.searchParams.get('id')
             const accountAddress = url.searchParams.get('account')
             const tokenAmount = url.searchParams.get('token_amount')
@@ -489,7 +489,7 @@ Bun.serve({
             )
         }
 
-        if (url.pathname === '/stats') {
+        if (url.pathname === '/stats' && req.method === 'GET') {
             return new Response(
                 JSON.stringify({
                     pools: POOLS_CACHE?.length || 0,

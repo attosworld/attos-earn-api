@@ -35,9 +35,10 @@ import {
     type OciswapLPInfo,
 } from './src/ociswap'
 import { s } from '@calamari-radix/gateway-ez-mode'
-import type {
-    CommittedTransactionInfo,
-    TransactionFungibleBalanceChanges,
+import {
+    TransactionStatus,
+    type CommittedTransactionInfo,
+    type TransactionFungibleBalanceChanges,
 } from '@radixdlt/babylon-gateway-api-sdk'
 import {
     getRootFinancePoolState,
@@ -579,12 +580,15 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
 
         if (
             txs.find(
-                (tx) =>
-                    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every(
-                        (method) =>
-                            tx.manifest_instructions?.includes(method) || ''
+                (singleTx) =>
+                    CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every((method) =>
+                        singleTx.manifest_instructions?.includes(method)
                     ) &&
-                    tx.manifest_instructions?.includes(rootNft?.added[0] || '')
+                    singleTx.manifest_instructions?.includes(
+                        rootNft?.added[0] || ''
+                    ) &&
+                    singleTx.transaction_status ===
+                        TransactionStatus.CommittedSuccess
             )
         ) {
             investedAmount = new Decimal(0)
@@ -913,7 +917,10 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
                         (method) =>
                             tx.manifest_instructions?.includes(method) || ''
                     ) &&
-                    tx.manifest_instructions?.includes(rootNft?.added[0] || '')
+                    tx.manifest_instructions?.includes(
+                        rootNft?.added[0] || ''
+                    ) &&
+                    tx.transaction_status === TransactionStatus.CommittedSuccess
             )
         ) {
             investedAmount = new Decimal(0)
