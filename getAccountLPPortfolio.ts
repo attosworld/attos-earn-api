@@ -286,8 +286,15 @@ async function getLPInfo(
     }
     if (lpInfo.type === 'defiplaza' && lpInfo.balance) {
         return await defiplazaLpInfo(lpAddress, lpInfo.balance)
-    } else if (lpInfo.type === 'ociswap' && lpInfo.balance) {
-        return await getOciswapLpInfo(lpAddress, lpInfo.balance)
+    } else if (
+        lpInfo.type === 'ociswap' &&
+        lpInfo.balance &&
+        PAIR_NAME_CACHE[lpAddress]?.component
+    ) {
+        return await getOciswapLpInfo(
+            PAIR_NAME_CACHE[lpAddress].component,
+            lpInfo.balance
+        )
     } else if (lpInfo.type === 'ociswap_v2' && lpInfo.nftInfo) {
         return (await Promise.all(
             lpInfo.nftInfo.nfts.map(async (nfi: NftInfo) => {
@@ -317,7 +324,8 @@ export type UnderlyingTokens =
 
 function calculateCurrentValue(
     underlyingTokens: UnderlyingTokens,
-    tokenPrices: Record<string, TokenInfo>
+    tokenPrices: Record<string, TokenInfo>,
+    lpAddress?: string
 ) {
     let currentValue = new Decimal(0)
 
@@ -331,11 +339,16 @@ function calculateCurrentValue(
             )
             currentValue = baseValue.plus(quoteValue)
         } else if (isOciswapLPInfo(underlyingTokens)) {
+            const pairDetails = PAIR_NAME_CACHE[lpAddress || '']
+            const xAddress =
+                pairDetails.left_token ?? underlyingTokens.x_address
+            const yAddress =
+                pairDetails.right_token ?? underlyingTokens.y_address
             const xValue = new Decimal(underlyingTokens.x_amount.token).times(
-                tokenPrices[underlyingTokens.x_address]?.tokenPriceUSD || 0
+                tokenPrices[xAddress]?.tokenPriceUSD || 0
             )
             const yValue = new Decimal(underlyingTokens.y_amount.token).times(
-                tokenPrices[underlyingTokens.y_address]?.tokenPriceUSD || 0
+                tokenPrices[yAddress]?.tokenPriceUSD || 0
             )
             currentValue = xValue.plus(yValue)
         } else if (isOciswapV2LPInfo(underlyingTokens)) {
@@ -377,6 +390,7 @@ function processLPTransaction(
 
         relevantTokenChanges?.forEach((it) => {
             if (+it.balance_change < 0) {
+                console.log(it.balance_change)
                 investedAmount = investedAmount.plus(
                     new Decimal(it.balance_change)
                         .abs()
@@ -678,7 +692,7 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
             lpInfo
         )
 
-        if (lpMetatadata.metadata.infoUrl?.split('/')[4]) {
+        if (underlyingTokens && lpMetatadata.metadata.infoUrl?.split('/')[4]) {
             const componentMetadata =
                 await gatewayApiEzMode.state.getComponentInfo(
                     lpMetatadata.metadata.infoUrl?.split('/')[4]
@@ -1074,7 +1088,8 @@ export async function getAccountLPPortfolio(address: string) {
 
                 const currentValue = calculateCurrentValue(
                     underlyingTokens,
-                    tokenPrices
+                    tokenPrices,
+                    lpAddress
                 )
                 const investedAmount = liquidityPoolTxs
                     .filter((tx) => tx.liquidity !== undefined)
