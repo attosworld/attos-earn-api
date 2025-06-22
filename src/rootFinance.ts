@@ -1,4 +1,3 @@
-import fetch from 'node-fetch'
 import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
@@ -43,6 +42,51 @@ export async function getRootFinancePoolState(): Promise<RootFinancePoolStateRes
         return (await response.json()) as RootFinancePoolStateResponse
     } catch (error) {
         console.error('Error fetching Root Finance pool state:', error)
+        throw error
+    }
+}
+
+export interface RootMarketStats {
+    totalValueLocked: number
+    totalProtocolBorrowed: number
+    totalProtocolSupplied: number
+    assets: {
+        [key: string]: {
+            resource: string
+            availableLiquidity: string
+            totalLiquidity: { amount: string; value: number }
+            totalSupply: { amount: string; value: number }
+            totalBorrow: { amount: string; value: number }
+            lendingAPY: number
+            borrowAPY: number
+            optimalUsage: string
+            LTVLimit: string
+        }
+    }
+}
+
+export async function getRootMarketStats(): Promise<RootMarketStats | null> {
+    try {
+        const response = await fetch(
+            'https://backend-prod.rootfinance.xyz/api/markets/stats',
+            {
+                headers: {
+                    accept: 'application/json, text/plain, */*',
+                },
+                method: 'GET',
+            }
+        )
+
+        if (!response.ok) {
+            console.error(
+                `getRootMarketStats : HTTP error! status: ${response.status}`
+            )
+            return null
+        }
+
+        return await response.json()
+    } catch (error) {
+        console.error('Error fetching Root market stats:', error)
         throw error
     }
 }

@@ -7,7 +7,7 @@ import {
     type VolumeAndTokenMetadata,
 } from './src/defiplaza'
 import { ociswapPools as getOciswapPools } from './src/ociswap'
-import { tokensRequest } from './src/astrolescent'
+import { tokensRequest, type TokenInfo } from './src/astrolescent'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
@@ -52,12 +52,16 @@ const STABLECOIN_ADDRESSES = new Set([
     'resource_rdx1thrvr3xfs2tarm2dl9emvs26vjqxu6mqvfgvqjne940jv0lnrrg7rw',
 ])
 
+export let TOKEN_PRICE_CACHE: Record<string, TokenInfo>
+
 export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
     const [ociPools, dfpPools, tokens] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
         tokensRequest(),
     ])
+
+    TOKEN_PRICE_CACHE = tokens
 
     if (!ociPools || !dfpPools) return []
 
@@ -277,6 +281,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 right_name: quote?.right_name || '',
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
+                                side: base?.single.side,
                                 boosted: !!BOOSTED_POOLS_CACHE[d.address],
                                 ...(BOOSTED_POOLS_CACHE[d.address] && {
                                     incentivised_lp_docs:

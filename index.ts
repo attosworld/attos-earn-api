@@ -1,5 +1,5 @@
 import { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
-import { getAllPools, type Pool } from './getAllPools'
+import { getAllPools, TOKEN_PRICE_CACHE, type Pool } from './getAllPools'
 import {
     getAccountLPPortfolio,
     type PoolPortfolioItem,
@@ -14,6 +14,9 @@ import {
     astrolescentRequest,
     type AstrolescentSwapRequest,
 } from './src/astrolescent'
+import { getLpPerformance } from './pools-simulate'
+import { WeftClient } from './src/weftFinance'
+import { getRootMarketStats } from './src/rootFinance'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -68,9 +71,14 @@ function writeCacheToFile(
               )
             : { data: {}, lastUpdated: 0 }
 
+        const newCacheData = { ...cache.data, ...data }
+        const lastSevenDayVolume = Object.keys(newCacheData)
+            .slice(-7)
+            .reduce((acc, item) => ({ ...acc, [item]: newCacheData[item] }), {})
+
         writeFileSync(
             `${CACHE_DIR}/${poolComponent}.json`,
-            JSON.stringify({ data: { ...cache.data, ...data }, lastUpdated }),
+            JSON.stringify({ data: lastSevenDayVolume, lastUpdated }),
             'utf-8'
         )
         console.log(`Cache updated for pool ${poolComponent}`)
@@ -133,7 +141,6 @@ const CACHE_DURATION = 60000
 // Function to update the cache
 async function updatePoolsCache(bridgedTokens: Set<string>) {
     try {
-        POOLS_CACHE = []
         POOLS_CACHE = await getAllPools(bridgedTokens)
         console.log('CACHE LENGTH ', POOLS_CACHE.length)
         console.log('Pools cache updated at', new Date().toISOString())
@@ -189,7 +196,6 @@ async function updatePoolsVolumeCache() {
                 : undefined
 
             lastUpdated?.setHours(1, 0, 0, 0)
-            console.log(lastUpdated)
             const volumeData = lastUpdated
                 ? await getOciswapPoolVolumePerDay(pool.component, lastUpdated)
                 : await getOciswapPoolVolumePerDay(pool.component)
@@ -211,13 +217,6 @@ async function updatePoolsVolumeCache() {
 }
 
 const BRIDGED_TOKENS = await getBridgedTokens()
-
-// Initial cache update
-await updatePoolsCache(BRIDGED_TOKENS)
-
-await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
-
-await getStrategies()
 
 // Update cache every 5 minutes
 setInterval(() => updatePoolsCache(BRIDGED_TOKENS), CACHE_DURATION)
@@ -528,6 +527,78 @@ Bun.serve({
             )
         }
 
+        if (url.pathname === '/pools/performance' && req.method === 'GET') {
+            const baseToken = url.searchParams.get('base_token')
+            const type = url.searchParams.get('type') as 'base' | 'quote' | null
+
+            if (!baseToken || !type) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['base_token_and_type_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(
+                JSON.stringify(
+                    await getLpPerformance(baseToken, type, '45653')
+                ),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/v2/strategies' && req.method === 'GET') {
+            const [weftPools, root] = await Promise.all([
+                WeftClient.getLendingPools(),
+                getRootMarketStats(),
+            ])
+
+            const weftRemapped = weftPools.map((pool) => ({
+                name: TOKEN_PRICE_CACHE[pool.resourceAddress].name,
+                symbol: TOKEN_PRICE_CACHE[pool.resourceAddress].symbol,
+                icon_url: TOKEN_PRICE_CACHE[pool.resourceAddress].icon_url,
+                resource_address: pool.resourceAddress,
+                bonus_type: 'APR',
+                bonus_value: pool.netLendingApr,
+                borrowed: pool.totalDeposit,
+                loaned: pool.totalLoan,
+            }))
+
+            const rootRemapped = Object.keys(root?.assets || {}).map(
+                (assetKey) => ({
+                    name: TOKEN_PRICE_CACHE[assetKey].name,
+                    symbol: TOKEN_PRICE_CACHE[assetKey].symbol,
+                    icon_url: TOKEN_PRICE_CACHE[assetKey].icon_url,
+                    resource_address: root?.assets[assetKey].resource || '',
+                    bonus_type: 'APY',
+                    bonus_value: root?.assets[assetKey].lendingAPY,
+                    borrowed: root?.assets[assetKey].totalSupply.value,
+                    loaned: root?.assets[assetKey].totalBorrow.value,
+                })
+            )
+
+            return new Response(
+                JSON.stringify([...weftRemapped, ...rootRemapped]),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
         return new Response(null, {
             status: 404,
             headers: corsHeaders,
@@ -536,3 +607,10 @@ Bun.serve({
 })
 
 console.log(`Server running on http://localhost:${port}/`)
+
+// Initial cache update
+await updatePoolsCache(BRIDGED_TOKENS)
+
+await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
+
+await getStrategies()

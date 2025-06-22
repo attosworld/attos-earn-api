@@ -109,13 +109,13 @@ export async function ociswapPools(items: OciswapPool[] = [], cursor?: string) {
                     next_cursor: string
                 }>
         )
-        .catch((err) => console.error(err))
+        .catch(() => ({ data: [], next_cursor: null }))
 
     if (response?.next_cursor) {
         return ociswapPools([...items, ...response.data], response.next_cursor)
     }
 
-    if (response) {
+    if (!('error' in response)) {
         return [...items, ...(response as { data: OciswapPool[] }).data]
     }
 

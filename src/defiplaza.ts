@@ -24,7 +24,7 @@ export async function getDefiplazaPools() {
 
     return fetch('https://radix.defiplaza.net/api/pairs', options)
         .then((res) => res.json() as Promise<{ data: DefiplazaPool[] }>)
-        .catch((err) => console.error(err))
+        .catch(() => ({ data: [] as DefiplazaPool[] }))
 }
 
 export interface DefiPlazaLPInfo {

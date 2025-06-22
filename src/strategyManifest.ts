@@ -14,13 +14,14 @@ import {
 } from './ociswap'
 import { createAddBasicOrFlexLiquidityManifest } from './ociswapBasicFlexPool'
 import { createAddLiquidityManifest } from './ociswapPrecisionPool'
-import { getRootMarketPrices, getRootMarketStats } from './strategies'
+import { getRootMarketPrices } from './strategies'
 import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
     SUSD_RESOURCE_ADDRESS,
     DFP2_RESOURCE_ADDRESS,
 } from './resourceAddresses'
+import { getRootMarketStats } from './rootFinance'
 
 export async function handleOciswapStrategy(
     manifest: string,
