@@ -17,6 +17,7 @@ import {
 import { getLpPerformance } from './pools-simulate'
 import { WeftClient } from './src/weftFinance'
 import { getRootMarketStats } from './src/rootFinance'
+import cron from 'node-cron'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -609,8 +610,18 @@ await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
 
 await getStrategies()
 
-// Update cache every 5 minutes
-setInterval(() => updatePoolsCache(BRIDGED_TOKENS), CACHE_DURATION)
+// Update pools cache every 5 minutes using cron
+// "*/5 * * * *" means "every 5 minutes"
+cron.schedule('*/5 * * * *', () => {
+    console.log('Running pools cache update (scheduled task)')
+    updatePoolsCache(BRIDGED_TOKENS)
+})
 
-// Update volume cache every 15 minutes
-setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
+// Update volume cache every 15 minutes using cron
+// "*/15 * * * *" means "every 15 minutes"
+cron.schedule('*/15 * * * *', () => {
+    console.log('Running volume cache update (scheduled task)')
+    if (process.env.CACHE_DIR) {
+        updatePoolsVolumeCache()
+    }
+})
