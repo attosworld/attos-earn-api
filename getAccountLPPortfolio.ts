@@ -390,7 +390,6 @@ function processLPTransaction(
 
         relevantTokenChanges?.forEach((it) => {
             if (+it.balance_change < 0) {
-                console.log(it.balance_change)
                 investedAmount = investedAmount.plus(
                     new Decimal(it.balance_change)
                         .abs()

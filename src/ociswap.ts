@@ -154,7 +154,6 @@ export async function getOciswapLpInfo(
     ).then((response) => response.json() as Promise<OciswapLPInfo>)
 
     if (lpInfo && 'error' in lpInfo) {
-        console.log(lpInfo, lpPoolComponent)
         return
     }
 

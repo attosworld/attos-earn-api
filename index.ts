@@ -218,12 +218,6 @@ async function updatePoolsVolumeCache() {
 
 const BRIDGED_TOKENS = await getBridgedTokens()
 
-// Update cache every 5 minutes
-setInterval(() => updatePoolsCache(BRIDGED_TOKENS), CACHE_DURATION)
-
-// Update volume cache every 15 minutes
-setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
-
 const port = process.env.PORT || 3000
 
 Bun.serve({
@@ -614,3 +608,9 @@ await updatePoolsCache(BRIDGED_TOKENS)
 await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
 
 await getStrategies()
+
+// Update cache every 5 minutes
+setInterval(() => updatePoolsCache(BRIDGED_TOKENS), CACHE_DURATION)
+
+// Update volume cache every 15 minutes
+setInterval(updatePoolsVolumeCache, 15 * 60 * 1000)
