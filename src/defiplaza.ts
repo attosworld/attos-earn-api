@@ -276,6 +276,25 @@ export async function getVolumeAndTokenMetadata(
         .catch(() => null)
 }
 
+export interface DefiplazaStakingPool {
+    address: string
+    token: string
+    sToken: string
+    pool: string
+    description: string
+    infoUrl: string
+    intervalAmount: string
+    interval: string
+    totalStake: number
+    totalStakeUSD: number
+}
+
+export async function getDefiplazaStakingTokens() {
+    return fetch('https://radix.defiplaza.net/api/staking')
+        .then((res) => res.json() as Promise<DefiplazaStakingPool[]>)
+        .catch(() => [] as DefiplazaStakingPool[])
+}
+
 export function createAddDefiplazaCalmLiquidityManifest(
     poolComponentAddress: string,
     shortageSide: 'QuoteShortage' | 'BaseShortage'

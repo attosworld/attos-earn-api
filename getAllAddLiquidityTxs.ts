@@ -9,9 +9,10 @@ export const OLD_ATTOS_ROYALTY_COMPONENT =
 
 export const OLD_CHARGE_ROYALTY_METHOD = 'charge_royalty'
 
-export const ATTOS_ROYALTY_COMPONENT = OLD_ATTOS_ROYALTY_COMPONENT
+export const ATTOS_ROYALTY_COMPONENT =
+    'component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6'
 
-export const CHARGE_ROYALTY_METHOD = OLD_CHARGE_ROYALTY_METHOD
+export const CHARGE_ROYALTY_METHOD = 'charge_strategy_royalty'
 
 export type EnhancedTransactionInfo = CommittedTransactionInfo & {
     liquidity?: 'added' | 'removed'
@@ -20,8 +21,7 @@ export type EnhancedTransactionInfo = CommittedTransactionInfo & {
 }
 
 const isAddLiquidityTx = (tx: CommittedTransactionInfo): boolean =>
-    !!tx.manifest_instructions?.includes('add_liquidity') &&
-    !tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT)
+    !!tx.manifest_instructions?.includes('add_liquidity')
 
 export const CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST = [
     'remove_liquidity',
@@ -57,6 +57,11 @@ const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
             (f) => f.type === 'RoyaltyDistributed'
         ) &&
         tx.manifest_instructions?.includes(CHARGE_ROYALTY_METHOD)) ||
+    (!!tx.affected_global_entities?.includes(OLD_ATTOS_ROYALTY_COMPONENT) &&
+        !!tx.balance_changes?.fungible_fee_balance_changes.some(
+            (f) => f.type === 'RoyaltyDistributed'
+        ) &&
+        tx.manifest_instructions?.includes(OLD_CHARGE_ROYALTY_METHOD)) ||
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST.every((method) =>
         tx.manifest_instructions?.includes(method)
     )

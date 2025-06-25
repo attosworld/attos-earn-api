@@ -1,5 +1,5 @@
 import { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
-import { getAllPools, TOKEN_PRICE_CACHE, type Pool } from './getAllPools'
+import { getAllPools, type Pool } from './getAllPools'
 import {
     getAccountLPPortfolio,
     type PoolPortfolioItem,
@@ -15,9 +15,8 @@ import {
     type AstrolescentSwapRequest,
 } from './src/astrolescent'
 import { getLpPerformance } from './pools-simulate'
-import { WeftClient } from './src/weftFinance'
-import { getRootMarketStats } from './src/rootFinance'
 import cron from 'node-cron'
+import { getV2Strategies, type Strategy } from './src/strategiesV2'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -217,6 +216,12 @@ async function updatePoolsVolumeCache() {
     }
 }
 
+let STRATEGIES_V2_CACHE: Strategy[] = []
+
+async function updateStrategiesV2Cache() {
+    STRATEGIES_V2_CACHE = await getV2Strategies()
+}
+
 const BRIDGED_TOKENS = await getBridgedTokens()
 
 const port = process.env.PORT || 3000
@@ -391,7 +396,7 @@ Bun.serve({
             })
         }
 
-        if (url.pathname === '/strategies/execute' && req.method === 'POST') {
+        if (url.pathname === '/strategies/execute' && req.method === 'GET') {
             const strategyId = url.searchParams.get('id')
             const accountAddress = url.searchParams.get('account')
             const tokenAmount = url.searchParams.get('token_amount')
@@ -554,44 +559,12 @@ Bun.serve({
         }
 
         if (url.pathname === '/v2/strategies' && req.method === 'GET') {
-            const [weftPools, root] = await Promise.all([
-                WeftClient.getLendingPools(),
-                getRootMarketStats(),
-            ])
-
-            const weftRemapped = weftPools.map((pool) => ({
-                name: TOKEN_PRICE_CACHE[pool.resourceAddress].name,
-                symbol: TOKEN_PRICE_CACHE[pool.resourceAddress].symbol,
-                icon_url: TOKEN_PRICE_CACHE[pool.resourceAddress].icon_url,
-                resource_address: pool.resourceAddress,
-                bonus_type: 'APR',
-                bonus_value: pool.netLendingApr,
-                borrowed: pool.totalDeposit,
-                loaned: pool.totalLoan,
-            }))
-
-            const rootRemapped = Object.keys(root?.assets || {}).map(
-                (assetKey) => ({
-                    name: TOKEN_PRICE_CACHE[assetKey].name,
-                    symbol: TOKEN_PRICE_CACHE[assetKey].symbol,
-                    icon_url: TOKEN_PRICE_CACHE[assetKey].icon_url,
-                    resource_address: root?.assets[assetKey].resource || '',
-                    bonus_type: 'APY',
-                    bonus_value: root?.assets[assetKey].lendingAPY,
-                    borrowed: root?.assets[assetKey].totalSupply.value,
-                    loaned: root?.assets[assetKey].totalBorrow.value,
-                })
-            )
-
-            return new Response(
-                JSON.stringify([...weftRemapped, ...rootRemapped]),
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...corsHeaders,
-                    },
-                }
-            )
+            return new Response(JSON.stringify(STRATEGIES_V2_CACHE), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
         }
 
         return new Response(null, {
@@ -610,11 +583,17 @@ await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
 
 await getStrategies()
 
+await updateStrategiesV2Cache()
 // Update pools cache every 5 minutes using cron
 // "*/5 * * * *" means "every 5 minutes"
 cron.schedule('*/5 * * * *', () => {
     console.log('Running pools cache update (scheduled task)')
     updatePoolsCache(BRIDGED_TOKENS)
+})
+
+cron.schedule('*/5 * * * *', () => {
+    console.log('Running strategies cache update (scheduled task)')
+    updateStrategiesV2Cache()
 })
 
 // Update volume cache every 15 minutes using cron
