@@ -6,3 +6,5 @@ export const XUSDC_RESOURCE_ADDRESS =
     'resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf'
 export const DFP2_RESOURCE_ADDRESS =
     'resource_rdx1t5ywq4c6nd2lxkemkv4uzt8v7x7smjcguzq5sgafwtasa6luq7fclq'
+export const WEFT_RESOURCE_ADDRESS =
+    'resource_rdx1tk3fxrz75ghllrqhyq8e574rkf4lsq2x5a0vegxwlh3defv225cth3'
