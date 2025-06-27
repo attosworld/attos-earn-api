@@ -220,6 +220,7 @@ let STRATEGIES_V2_CACHE: Strategy[] = []
 
 async function updateStrategiesV2Cache() {
     STRATEGIES_V2_CACHE = await getV2Strategies()
+    console.log('Strategies V2 cache updated at', new Date().toISOString())
 }
 
 const BRIDGED_TOKENS = await getBridgedTokens()
@@ -581,9 +582,8 @@ await updatePoolsCache(BRIDGED_TOKENS)
 
 await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
 
-await getStrategies()
-
 await updateStrategiesV2Cache()
+
 // Update pools cache every 5 minutes using cron
 // "*/5 * * * *" means "every 5 minutes"
 cron.schedule('*/5 * * * *', () => {
