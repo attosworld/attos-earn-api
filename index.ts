@@ -586,21 +586,21 @@ await updateStrategiesV2Cache()
 
 // Update pools cache every 5 minutes using cron
 // "*/5 * * * *" means "every 5 minutes"
-cron.schedule('*/5 * * * *', () => {
+cron.schedule('*/5 * * * *', async () => {
     console.log('Running pools cache update (scheduled task)')
-    updatePoolsCache(BRIDGED_TOKENS)
+    await updatePoolsCache(BRIDGED_TOKENS)
 })
 
-cron.schedule('*/5 * * * *', () => {
+cron.schedule('*/5 * * * *', async () => {
     console.log('Running strategies cache update (scheduled task)')
-    updateStrategiesV2Cache()
+    await updateStrategiesV2Cache()
 })
 
 // Update volume cache every 15 minutes using cron
 // "*/15 * * * *" means "every 15 minutes"
-cron.schedule('*/15 * * * *', () => {
+cron.schedule('*/15 * * * *', async () => {
     console.log('Running volume cache update (scheduled task)')
     if (process.env.CACHE_DIR) {
-        updatePoolsVolumeCache()
+        await updatePoolsVolumeCache()
     }
 })
