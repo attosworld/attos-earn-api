@@ -257,9 +257,7 @@ export class WeftApiClient {
         const response = await fetch(url.toString())
 
         if (!response.ok) {
-            throw new Error(
-                `Failed to fetch pool state: ${response.statusText}`
-            )
+            return []
         }
 
         return await response.json()
@@ -269,13 +267,14 @@ export class WeftApiClient {
      * Get staking state
      * @returns Promise with staking state information
      */
-    async getStakingState(): Promise<StakingState> {
+    async getStakingState(): Promise<StakingState | null> {
         const response = await fetch(`${this.baseUrl}/staking`)
 
         if (!response.ok) {
-            throw new Error(
+            console.error(
                 `Failed to fetch staking state: ${response.statusText}`
             )
+            return null
         }
 
         return await response.json()

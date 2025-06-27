@@ -18,6 +18,9 @@ export interface BaseStrategy {
     bonus_type: 'APR' | 'APY'
     strategy_type: 'Lending' | 'Staking' | 'Liquidation'
     bonus_value: number | string
+    provider: string
+    requiredAssets: { resource_address: string; symbol: string }[]
+    rewardTokens: string[]
 }
 
 export interface LendingStrategy extends BaseStrategy {
@@ -130,28 +133,39 @@ export async function getV2Strategies() {
         rewardTokens: [TOKEN_PRICE_CACHE[token.token].symbol],
     }))
 
-    const weftStakingRemapped = {
-        name: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].name,
-        symbol: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].symbol,
-        icon_url: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].icon_url,
-        info_url: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].infoUrl,
-        resource_address: WEFT_RESOURCE_ADDRESS,
-        provider: 'Defiplaza',
-        bonus_type: 'APR',
-        bonus_value: new Decimal(weftStaking.apr).times(100).toFixed(2),
-        strategy_type: 'Staking',
-        total_stake: weftStaking.tvl_usd,
-        requiredAssets: [
-            { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
-        ],
-        rewardTokens: [TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].symbol],
-    }
-
     const allStrategies = [
         ...weftRemapped,
         ...rootRemapped,
         ...defiplazaRemapped,
-        weftStakingRemapped,
+        ...(weftStaking
+            ? ([
+                  {
+                      name: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].name,
+                      symbol: TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].symbol,
+                      icon_url:
+                          TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].icon_url,
+                      info_url:
+                          TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].infoUrl,
+                      resource_address: WEFT_RESOURCE_ADDRESS,
+                      provider: 'Defiplaza',
+                      bonus_type: 'APR',
+                      bonus_value: new Decimal(weftStaking.apr)
+                          .times(100)
+                          .toFixed(2),
+                      strategy_type: 'Staking',
+                      total_stake: weftStaking.tvl_usd,
+                      requiredAssets: [
+                          {
+                              resource_address: XRD_RESOURCE_ADDRESS,
+                              symbol: 'XRD',
+                          },
+                      ],
+                      rewardTokens: [
+                          TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].symbol,
+                      ],
+                  },
+              ] as StakingStrategy[])
+            : []),
         ...fluxRemapped,
     ] as StrategiesResponse
 
@@ -163,34 +177,5 @@ export async function getV2Strategies() {
                 new Decimal(a.total_stake).gt(100)) ||
             a.strategy_type === 'Liquidation'
         )
-    })
-}
-
-function sortStrategiesByBonusAndTotal(
-    strategies: StrategiesResponse
-): StrategiesResponse {
-    return [...strategies].sort((a, b) => {
-        // First compare by deposited/total_stake
-        const aValue =
-            a.strategy_type === 'Lending'
-                ? new Decimal((a as LendingStrategy).deposited ?? '0')
-                : new Decimal((a as StakingStrategy).total_stake ?? '0')
-
-        const bValue =
-            b.strategy_type === 'Lending'
-                ? new Decimal((b as LendingStrategy).deposited ?? '0')
-                : new Decimal((b as StakingStrategy).total_stake ?? '0')
-
-        const valueComparison = bValue.comparedTo(aValue)
-
-        // If deposited/total_stake values are equal, then compare by bonus_value
-        if (valueComparison === 0) {
-            return new Decimal(b.bonus_value ?? '0').comparedTo(
-                new Decimal(a.bonus_value ?? '0')
-            )
-        }
-
-        // Otherwise return the value comparison result
-        return valueComparison
     })
 }
