@@ -74,6 +74,7 @@ export async function getRootMarketStats(): Promise<RootMarketStats | null> {
                     accept: 'application/json, text/plain, */*',
                 },
                 method: 'GET',
+                mode: 'cors',
             }
         )
 

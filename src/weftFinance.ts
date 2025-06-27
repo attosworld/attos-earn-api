@@ -228,7 +228,9 @@ export class WeftApiClient {
             url.searchParams.append('resourceAddresses', resourceAddresses)
         }
 
-        const response = await fetch(url.toString())
+        const response = await fetch(url.toString(), {
+            mode: 'cors',
+        })
 
         if (!response.ok) {
             throw new Error(
@@ -268,7 +270,9 @@ export class WeftApiClient {
      * @returns Promise with staking state information
      */
     async getStakingState(): Promise<StakingState | null> {
-        const response = await fetch(`${this.baseUrl}/staking`)
+        const response = await fetch(`${this.baseUrl}/staking`, {
+            mode: 'cors',
+        })
 
         if (!response.ok) {
             console.error(

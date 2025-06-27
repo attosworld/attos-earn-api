@@ -51,5 +51,6 @@ async function getReservoirApr({
         body: JSON.stringify({
             collateralAddress,
         }),
+        mode: 'cors',
     }).then((response) => response.json() as Promise<FluxPoolAprResponse>)
 }

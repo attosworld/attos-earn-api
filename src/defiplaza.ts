@@ -290,7 +290,9 @@ export interface DefiplazaStakingPool {
 }
 
 export async function getDefiplazaStakingTokens() {
-    return fetch('https://radix.defiplaza.net/api/staking')
+    return fetch('https://radix.defiplaza.net/api/staking', {
+        mode: 'cors',
+    })
         .then((res) => res.json() as Promise<DefiplazaStakingPool[]>)
         .catch(() => [] as DefiplazaStakingPool[])
 }
