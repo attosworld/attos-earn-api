@@ -578,11 +578,7 @@ Bun.serve({
 console.log(`Server running on http://localhost:${port}/`)
 
 // Initial cache update
-await updatePoolsCache(BRIDGED_TOKENS)
-
-await (process.env.CACHE_DIR ? updatePoolsVolumeCache() : Promise.resolve())
-
-await updateStrategiesV2Cache()
+await Promise.all([updatePoolsCache(BRIDGED_TOKENS), updateStrategiesV2Cache()])
 
 // Update pools cache every 5 minutes using cron
 // "*/5 * * * *" means "every 5 minutes"
