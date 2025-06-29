@@ -493,7 +493,9 @@ Bun.serve({
             return new Response(
                 JSON.stringify({
                     pools: POOLS_CACHE?.length || 0,
-                    strategies: Object.keys(STRATEGY_MANIFEST).length || 0,
+                    strategies:
+                        (Object.keys(STRATEGY_MANIFEST).length || 0) +
+                        STRATEGIES_V2_CACHE.length,
                 }),
                 {
                     headers: {
