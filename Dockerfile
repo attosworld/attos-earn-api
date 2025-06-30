@@ -34,6 +34,8 @@ FROM base
 # Copy built application
 COPY --from=build /app /app
 
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y fontconfig fonts-freefont-ttf
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
