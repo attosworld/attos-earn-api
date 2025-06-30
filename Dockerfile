@@ -18,7 +18,7 @@ FROM base AS build
 
 # Install packages needed to build node modules
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3
+    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3 build-essential libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libtool autoconf automake
 
 # Install node modules
 COPY bun.lock package-lock.json package.json ./
