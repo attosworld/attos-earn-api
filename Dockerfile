@@ -35,6 +35,7 @@ FROM base
 COPY --from=build /app /app
 
 ENV FONTCONFIG_PATH=/etc/fonts
+ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
