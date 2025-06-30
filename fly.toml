@@ -28,3 +28,4 @@ primary_region = 'ams'
 
 [env]
 CACHE_DIR = "/cache"
+FONTCONFIG_PATH=/etc/fonts
