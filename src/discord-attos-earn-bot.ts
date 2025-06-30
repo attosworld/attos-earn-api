@@ -51,11 +51,11 @@ async function generateFeaturedPoolsImage(
 
     // Title
     ctx.fillStyle = '#f0b100'
-    ctx.font = 'bold 30px Arial'
+    ctx.font = 'bold 30px FreeSans'
     ctx.fillText(title, 50, 50)
 
     // Pool Information
-    ctx.font = '20px Arial'
+    ctx.font = '20px FreeSans'
 
     for (const [index, pool] of pools.entries()) {
         const yPosition = 100 + index * poolInfoHeight
