@@ -17,6 +17,7 @@ import {
 import { getLpPerformance } from './pools-simulate'
 import cron from 'node-cron'
 import { getV2Strategies, type Strategy } from './src/strategiesV2'
+import { startDiscordBot } from './src/discord-attos-earn-bot'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -40,7 +41,7 @@ if (!existsSync(CACHE_DIR)) {
     console.log(`Directory '${CACHE_DIR}' already exists.`)
 }
 
-function readCacheFromFile(
+export function readCacheFromFile(
     poolComponent: string
 ): { data: number[]; lastUpdated: number } | null {
     if (existsSync(`${CACHE_DIR}/${poolComponent}.json`)) {
@@ -578,6 +579,8 @@ Bun.serve({
 })
 
 console.log(`Server running on http://localhost:${port}/`)
+
+startDiscordBot()
 
 // Initial cache update
 await Promise.all([updatePoolsCache(BRIDGED_TOKENS), updateStrategiesV2Cache()])
