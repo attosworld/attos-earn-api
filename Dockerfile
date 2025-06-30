@@ -34,6 +34,8 @@ FROM base
 # Copy built application
 COPY --from=build /app /app
 
+ENV FONTCONFIG_PATH=/etc/fonts
+
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
 CMD [ "bun", "run", "start" ]
