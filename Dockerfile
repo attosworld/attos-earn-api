@@ -18,7 +18,7 @@ FROM base AS build
 
 # Install packages needed to build node modules
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3 build-essential fontconfig fonts-adwaita libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
+    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3 build-essential fontconfig fonts-freefont-ttf libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
 
 # Install node modules
 COPY bun.lock package-lock.json package.json ./
