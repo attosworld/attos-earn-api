@@ -49,7 +49,6 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
-import { getRootMarketPrices } from './src/strategies'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -63,6 +62,7 @@ export interface PoolPortfolioItem {
     pnlPercentage: string
     strategy?: boolean
     airdropToken?: string
+    investedXrd: string
 }
 
 export function isDefiplazaLPInfo(
@@ -1049,9 +1049,8 @@ export async function getAccountLPPortfolio(address: string) {
 
     const strategyTxs = liquidityPoolTxs.filter((tx) => tx.strategy)
 
-    const [rootFinancePoolState, rootPrices] = await Promise.all([
+    const [rootFinancePoolState] = await Promise.all([
         getRootFinancePoolState(),
-        getRootMarketPrices(),
     ])
 
     const portfolioPnL: PoolPortfolioItem[] = (

@@ -11,6 +11,8 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { verifyUserAndAssignRole } from './discord-api'
+import { getAccountLPPortfolio } from '../getAccountLPPortfolio'
+import Decimal from 'decimal.js'
 
 export const secureRandom = (byteCount: number): string =>
     randomBytes(byteCount).toString('hex')
@@ -158,7 +160,17 @@ export async function verifyRola(
 
     if (!result) return { valid: false }
 
-    const isVerified = await verifyUserAndAssignRole(userId)
+    const lpValues = await Promise.all(
+        body.map((signedChallenge) =>
+            getAccountLPPortfolio(signedChallenge.address)
+        )
+    )
+
+    const lpValue = lpValues.flat().reduce((acc, curr) => {
+        return acc.add(curr.investedXrd)
+    }, new Decimal(0))
+
+    const isVerified = await verifyUserAndAssignRole(userId, lpValue)
 
     if (!isVerified.success) {
         return { valid: false, error: isVerified.message }
