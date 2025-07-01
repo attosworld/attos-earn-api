@@ -20,6 +20,7 @@
         "@calamari-radix/sbor-ez-mode": "^1.2.1",
         "@eslint/js": "^9.23.0",
         "@radixdlt/babylon-gateway-api-sdk": "^1.10.1",
+        "@radixdlt/rola": "^2.1.0",
         "bignumber.js": "^9.3.0",
         "canvas": "^3.1.2",
         "chart.js": "^4.5.0",

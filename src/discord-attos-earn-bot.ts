@@ -15,15 +15,16 @@ import { createCanvas, loadImage } from 'canvas'
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!)
 
-const client = new Client({
+export const DISCORD_JS_CLIENT = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
     ],
 })
 
-client.once('ready', () => {
+DISCORD_JS_CLIENT.once('ready', () => {
     console.log('Discord bot is ready!')
 })
 
@@ -122,7 +123,7 @@ async function generateFeaturedPoolsImage(
 }
 
 export async function startDiscordBot() {
-    client.on(Events.InteractionCreate, async (interaction) => {
+    DISCORD_JS_CLIENT.on(Events.InteractionCreate, async (interaction) => {
         if (!interaction.isChatInputCommand()) return
 
         if (interaction.commandName === 'volumechart') {
@@ -371,5 +372,5 @@ export async function startDiscordBot() {
             console.log('Error creating slash command:', error)
         })
 
-    await client.login(process.env.DISCORD_TOKEN!)
+    await DISCORD_JS_CLIENT.login(process.env.DISCORD_TOKEN!)
 }

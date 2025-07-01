@@ -18,6 +18,12 @@ import { getLpPerformance } from './pools-simulate'
 import cron from 'node-cron'
 import { getV2Strategies, type Strategy } from './src/strategiesV2'
 import { startDiscordBot } from './src/discord-attos-earn-bot'
+import {
+    challengeStore,
+    cleanupExpiredChallenges,
+    verifyRola,
+} from './src/rola'
+import { validateDiscordUserToken } from './src/discord-api'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -30,7 +36,7 @@ export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
         ),
 }
 
-const CACHE_DIR = process.env.CACHE_DIR || './cache'
+export const CACHE_DIR = process.env.CACHE_DIR || './cache'
 
 if (!existsSync(CACHE_DIR)) {
     // If it doesn't exist, create the directory
@@ -131,7 +137,7 @@ export const BOOSTED_POOLS_CACHE: Record<string, { docs: string }> = {
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 }
 
 // Cache for pools
@@ -233,37 +239,15 @@ Bun.serve({
     idleTimeout: 30,
     async fetch(req) {
         const url = new URL(req.url)
+        // Handle OPTIONS requests for CORS preflight
+        if (req.method === 'OPTIONS') {
+            return new Response(null, {
+                status: 204,
+                headers: corsHeaders,
+            })
+        }
+
         if (url.pathname === '/pools' && req.method === 'GET') {
-            // const mode = url.searchParams.get('mode')
-
-            // if (mode === 'categorized') {
-            //     const poolsByTags = POOLS_CACHE?.reduce(
-            //         (acc, pool) => {
-            //             if (pool.tags.length) {
-            //                 pool.tags.forEach((tag) => {
-            //                     if (!acc[tag]) {
-            //                         acc[tag] = []
-            //                     }
-            //                     acc[tag].push(pool)
-            //                 })
-            //             } else {
-            //                 if (!acc.uncategorized) {
-            //                     acc.uncategorized = []
-            //                 }
-            //                 acc.uncategorized.push(pool)
-            //             }
-            //             return acc
-            //         },
-            //         {} as Record<string, Pool[]>
-            //     )
-
-            //     return new Response(JSON.stringify(poolsByTags), {
-            //         headers: {
-            //             'Content-Type': 'application/json',
-            //             ...corsHeaders,
-            //         },
-            //     })
-            // }
             // Always return the cached data, which is updated in the background
             return new Response(JSON.stringify(POOLS_CACHE), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -507,14 +491,6 @@ Bun.serve({
             )
         }
 
-        // Handle OPTIONS requests for CORS preflight
-        if (req.method === 'OPTIONS') {
-            return new Response(null, {
-                status: 204,
-                headers: corsHeaders,
-            })
-        }
-
         if (url.pathname === '/swap' && req.method === 'POST') {
             const body = (await req.json()) as AstrolescentSwapRequest
 
@@ -571,6 +547,98 @@ Bun.serve({
             })
         }
 
+        if (url.pathname === '/discord/verify-code') {
+            const response = await fetch(
+                `https://discord.com/api/oauth2/token`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        client_id: process.env.DISCORD_APPLICATION_ID || '',
+                        client_secret: process.env.DISCORD_CLIENT_SECRET || '',
+                        grant_type: 'authorization_code',
+                        code: (await req.json()).code,
+                        redirect_uri:
+                            process.env.REDIRECT_URI ||
+                            'http://localhost:4200/discord-verify',
+                    }),
+                }
+            )
+
+            const { access_token } = await response.json()
+
+            if (!access_token) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['invalid_token_or_no_token'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(JSON.stringify({ access_token }), {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (url.pathname === '/rola/create-challenge' && req.method === 'GET') {
+            return new Response(
+                JSON.stringify({ challenge: challengeStore.create() }),
+                {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/rola/verify' && req.method === 'POST') {
+            const discordUser = await validateDiscordUserToken(
+                req.headers.get('Authorization') ||
+                    req.headers.get('authorization')
+            )
+
+            if (!discordUser.valid) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['invalid_token_or_no_token'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(
+                JSON.stringify(
+                    await verifyRola(await req.json(), discordUser.user?.id)
+                ),
+                {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
         return new Response(null, {
             status: 404,
             headers: corsHeaders,
@@ -604,4 +672,9 @@ cron.schedule('*/15 * * * *', async () => {
     if (process.env.CACHE_DIR) {
         await updatePoolsVolumeCache()
     }
+})
+
+cron.schedule('0 * * * *', async () => {
+    console.log('Running challenge files cleanup (scheduled task)')
+    cleanupExpiredChallenges()
 })
