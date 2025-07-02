@@ -352,6 +352,7 @@ function calculateCurrentValue(
             )
             currentValue = xValue.plus(yValue)
         } else if (isOciswapV2LPInfo(underlyingTokens)) {
+            console.log('Processing Ociswap V2 LP transaction')
             underlyingTokens.forEach((lp) => {
                 const xValue = new Decimal(lp.x_amount.token).times(
                     tokenPrices[lp.left_token]?.tokenPriceUSD || 0
@@ -1114,11 +1115,13 @@ export async function getAccountLPPortfolio(address: string) {
                     provider: PAIR_NAME_CACHE[lpAddress]?.provider,
                     invested: investedAmount.toFixed(),
                     currentValue: currentValue.toFixed(),
-                    investedXrd: investedAmount.div(
-                        new Decimal(
-                            tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
+                    investedXrd: investedAmount
+                        .div(
+                            new Decimal(
+                                tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
+                            )
                         )
-                    ),
+                        .toFixed(18),
                     currentValueXrd: currentValue.div(
                         tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
                     ),
@@ -1214,7 +1217,7 @@ export async function getAccountLPPortfolio(address: string) {
     return portfolioPnL.filter(
         (pool) =>
             pool &&
-            ((+pool.invested || 0) > 0 ||
+            (((+pool.invested || 0) > 0 && +pool.currentValue > 0.001) ||
                 (pool.strategy &&
                     +pool.invested != 0 &&
                     +pool.currentValue != 0))

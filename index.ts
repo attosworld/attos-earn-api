@@ -709,7 +709,9 @@ Bun.serve({
 
 console.log(`Server running on http://localhost:${port}/`)
 
-startDiscordBot()
+if (process.env.CACHE_DIR) {
+    startDiscordBot()
+}
 
 console.log('Finished volume pools cache')
 
