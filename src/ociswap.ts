@@ -529,42 +529,71 @@ export async function getOciswapPoolEvents(
         )
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
+            console.log(
+                `No response for pool ${poolIdentifier}, returning ${items.length} items`
+            )
+            return items
         }
 
         const result = (await response.json()) as PoolEventsResponse
 
-        let reachedCutoff = false
+        // If we got no events, we've reached the end
+        if (!result.data || result.data.length === 0) {
+            console.log(
+                `No more events for pool ${poolIdentifier}, returning ${items.length} items`
+            )
+            return items
+        }
+
+        console.log(
+            'Getting events for',
+            poolIdentifier,
+            'current items:',
+            items.length,
+            'next cursor:',
+            result.next_cursor
+        )
+
+        // Check if we've reached the cutoff date by examining the oldest event in this batch
+        const oldestEventInBatch = result.data[result.data.length - 1]
+        const oldestEventDate = new Date(oldestEventInBatch.timestamp)
+        const reachedCutoff = oldestEventDate < cutoffDate
+
+        // Filter events to only include those after the cutoff date
         const filteredEvents = result.data.filter((event) => {
             const eventDate = new Date(event.timestamp)
-            if (eventDate >= cutoffDate) {
-                return true
-            } else {
-                reachedCutoff = true
-                return false
-            }
+            return eventDate >= cutoffDate
         })
 
         const newItems = [...items, ...filteredEvents]
 
+        // Stop recursion if:
+        // 1. There's no next cursor (end of data)
+        // 2. We've reached the cutoff date
+        // 3. We received fewer events than requested (end of data)
         if (
-            result.next_cursor !== null &&
-            !reachedCutoff &&
-            filteredEvents.length === result.data.length
+            result.next_cursor === null ||
+            reachedCutoff ||
+            result.data.length < limit
         ) {
-            // If there's a next cursor and we haven't reached the cutoff date, make a recursive call
-            return getOciswapPoolEvents(
-                poolIdentifier,
-                days,
-                newItems,
-                result.next_cursor,
-                limit,
-                startDate
+            console.log(
+                `Finished fetching events for ${poolIdentifier}, returning ${newItems.length} items`
             )
+            return newItems
         }
 
-        // If there's no next cursor or we've reached the cutoff date, return the accumulated items
-        return newItems
+        // Add a small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 100))
+
+        // Continue recursion with the next cursor
+        return getOciswapPoolEvents(
+            poolIdentifier,
+            days,
+            newItems,
+            result.next_cursor,
+            limit,
+            startDate
+        )
     } catch (err) {
         console.error('Error fetching Ociswap pool events:', err)
         // In case of an error, return the items collected so far
@@ -596,8 +625,9 @@ export async function getOciswapPoolVolumePerDay(
     }
 
     // Process swap events
-    events.forEach((event) => {
-        if (event.type === 'swap') {
+    events
+        .filter((event) => event.type === 'swap')
+        .forEach((event) => {
             const date = new Date(event.timestamp)
             const dateString = date.toISOString().split('T')[0]
 
@@ -605,8 +635,7 @@ export async function getOciswapPoolVolumePerDay(
                 const eventVolume = parseFloat(event.volume.usd)
                 volumePerDay[dateString] += eventVolume
             }
-        }
-    })
+        })
 
     return { pool: poolIdentifier, volume: volumePerDay }
 }

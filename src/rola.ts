@@ -139,10 +139,6 @@ export async function verifyRola(
     body: SignedChallenge[],
     userId: string | undefined
 ) {
-    if (!userId) {
-        return { valid: false }
-    }
-
     const challenges = [
         ...body
             .reduce((acc, curr) => acc.add(curr.challenge), new Set<string>())
@@ -160,20 +156,22 @@ export async function verifyRola(
 
     if (!result) return { valid: false }
 
-    const lpValues = await Promise.all(
-        body.map((signedChallenge) =>
-            getAccountLPPortfolio(signedChallenge.address)
+    if (userId) {
+        const lpValues = await Promise.all(
+            body.map((signedChallenge) =>
+                getAccountLPPortfolio(signedChallenge.address)
+            )
         )
-    )
 
-    const lpValue = lpValues.flat().reduce((acc, curr) => {
-        return acc.add(curr.investedXrd)
-    }, new Decimal(0))
+        const lpValue = lpValues.flat().reduce((acc, curr) => {
+            return acc.add(curr.investedXrd)
+        }, new Decimal(0))
 
-    const isVerified = await verifyUserAndAssignRole(userId, lpValue)
+        const isVerified = await verifyUserAndAssignRole(userId, lpValue)
 
-    if (!isVerified.success) {
-        return { valid: false, error: isVerified.message }
+        if (!isVerified.success) {
+            return { valid: false, error: isVerified.message }
+        }
     }
 
     // The signature is valid and the public key is owned by the user

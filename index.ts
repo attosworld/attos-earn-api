@@ -175,42 +175,97 @@ async function updatePoolsVolumeCache() {
 
     const now = Date.now()
 
-    const pools = POOLS_CACHE.filter((p) => p.type === 'ociswap').sort(
-        (a, b) => {
+    // Only get the top 50 pools by volume to limit memory usage
+    const poolsToUpdate = POOLS_CACHE.filter((p) => p.type === 'ociswap')
+        .sort((a, b) => {
             return (
                 b.volume_7d - a.volume_7d ||
                 b.bonus_7d - a.bonus_7d ||
                 b.tvl - a.tvl
             )
-        }
-    )
+        })
+        .slice(0, 20)
 
-    const poolsToUpdate = pools.slice(0, 50)
-
+    // Process pools sequentially to avoid memory spikes
     for (const pool of poolsToUpdate) {
         try {
-            const lastUpdated = existsSync(
-                `${CACHE_DIR}/${pool.component}.json`
-            )
-                ? new Date(
-                      JSON.parse(
-                          readFileSync(
-                              `${CACHE_DIR}/${pool.component}.json`,
-                              'utf-8'
-                          )
-                      ).lastUpdated
-                  )
-                : undefined
+            // Get the last update time from the cache file
+            let lastUpdated: Date | undefined
 
-            lastUpdated?.setHours(1, 0, 0, 0)
+            if (existsSync(`${CACHE_DIR}/${pool.component}.json`)) {
+                try {
+                    const fileContent = readFileSync(
+                        `${CACHE_DIR}/${pool.component}.json`,
+                        'utf-8'
+                    )
+                    const cache = JSON.parse(fileContent)
+                    lastUpdated = new Date(cache.lastUpdated)
+                    lastUpdated.setHours(1, 0, 0, 0)
+                } catch (error) {
+                    console.error(
+                        `Error reading cache for ${pool.component}:`,
+                        error
+                    )
+                    lastUpdated = undefined
+                }
+            }
+
+            // Get volume data since the last update
             const volumeData = lastUpdated
                 ? await getOciswapPoolVolumePerDay(pool.component, lastUpdated)
                 : await getOciswapPoolVolumePerDay(pool.component)
 
-            writeCacheToFile(pool.component, volumeData.volume, now)
-            console.log(
-                `Updated volume cache for pool ${pool.component} at ${new Date(now).toISOString()}`
-            )
+            // Write the new data to the cache file
+            try {
+                // Read existing cache if it exists
+                let existingData = {}
+                if (existsSync(`${CACHE_DIR}/${pool.component}.json`)) {
+                    const fileContent = readFileSync(
+                        `${CACHE_DIR}/${pool.component}.json`,
+                        'utf-8'
+                    )
+                    const cache = JSON.parse(fileContent)
+                    existingData = cache.data || {}
+                }
+
+                // Merge existing data with new data
+                const newCacheData: Record<string, number> = {
+                    ...existingData,
+                    ...volumeData.volume,
+                }
+
+                // Only keep the last 7 days of data to limit memory usage
+                const dates = Object.keys(newCacheData).sort()
+                const lastSevenDayVolume =
+                    dates.length > 7
+                        ? dates.slice(-7).reduce(
+                              (acc, date) => {
+                                  acc[date] = newCacheData[date]
+                                  return acc
+                              },
+                              {} as Record<string, number>
+                          )
+                        : newCacheData
+
+                // Write the updated cache to file
+                writeFileSync(
+                    `${CACHE_DIR}/${pool.component}.json`,
+                    JSON.stringify({
+                        data: lastSevenDayVolume,
+                        lastUpdated: now,
+                    }),
+                    'utf-8'
+                )
+
+                console.log(
+                    `Updated volume cache for pool ${pool.component} at ${new Date(now).toISOString()}`
+                )
+            } catch (error) {
+                console.error(
+                    `Error writing cache for ${pool.component}:`,
+                    error
+                )
+            }
 
             // Add a small delay between requests to avoid rate limiting
             await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -606,12 +661,18 @@ Bun.serve({
         }
 
         if (url.pathname === '/rola/verify' && req.method === 'POST') {
-            const discordUser = await validateDiscordUserToken(
+            const isDiscordVerification =
                 req.headers.get('Authorization') ||
-                    req.headers.get('authorization')
-            )
+                req.headers.get('authorization')
 
-            if (!discordUser.valid) {
+            const discordUser = isDiscordVerification
+                ? await validateDiscordUserToken(
+                      req.headers.get('Authorization') ||
+                          req.headers.get('authorization')
+                  )
+                : null
+
+            if (isDiscordVerification && !discordUser?.valid) {
                 return new Response(
                     JSON.stringify({
                         error_codes: ['invalid_token_or_no_token'],
@@ -627,7 +688,7 @@ Bun.serve({
 
             return new Response(
                 JSON.stringify(
-                    await verifyRola(await req.json(), discordUser.user?.id)
+                    await verifyRola(await req.json(), discordUser?.user?.id)
                 ),
                 {
                     status: 200,
@@ -650,31 +711,33 @@ console.log(`Server running on http://localhost:${port}/`)
 
 startDiscordBot()
 
+console.log('Finished volume pools cache')
+
 // Initial cache update
 await Promise.all([updatePoolsCache(BRIDGED_TOKENS), updateStrategiesV2Cache()])
 
 // Update pools cache every 5 minutes using cron
 // "*/5 * * * *" means "every 5 minutes"
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('*/5 * * * *', () => {
     console.log('Running pools cache update (scheduled task)')
-    await updatePoolsCache(BRIDGED_TOKENS)
+    updatePoolsCache(BRIDGED_TOKENS)
 })
 
-cron.schedule('*/5 * * * *', async () => {
+cron.schedule('*/5 * * * *', () => {
     console.log('Running strategies cache update (scheduled task)')
-    await updateStrategiesV2Cache()
+    updateStrategiesV2Cache()
 })
 
 // Update volume cache every 15 minutes using cron
 // "*/15 * * * *" means "every 15 minutes"
-cron.schedule('*/15 * * * *', async () => {
+cron.schedule('*/15 * * * *', () => {
     console.log('Running volume cache update (scheduled task)')
-    if (process.env.CACHE_DIR) {
-        await updatePoolsVolumeCache()
-    }
+    updatePoolsVolumeCache().then(() => {
+        console.log('finished updating volume cache (sheduled task)')
+    })
 })
 
-cron.schedule('0 * * * *', async () => {
+cron.schedule('0 * * * *', () => {
     console.log('Running challenge files cleanup (scheduled task)')
     cleanupExpiredChallenges()
 })
