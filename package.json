@@ -1,21 +1,34 @@
 {
-  "name": "attos-earn-api",
-  "module": "index.ts",
-  "type": "module",
-  "scripts": {
-    "start": "bun run index.ts"
-  },
-  "devDependencies": {
-    "@flydotio/dockerfile": "^0.7.9",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5.7.3"
-  },
-  "dependencies": {
-    "@calamari-radix/gateway-ez-mode": "^1.6.2",
-    "@calamari-radix/sbor-ez-mode": "^1.2.1",
-    "@radixdlt/babylon-gateway-api-sdk": "^1.10.1",
-    "decimal.js": "^10.5.0"
-  }
+    "name": "attos-earn-api",
+    "module": "index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "bun run index.ts",
+        "dev": "bun --watch index.ts",
+        "format": "prettier . --write"
+    },
+    "devDependencies": {
+        "@flydotio/dockerfile": "^0.7.9",
+        "@types/bun": "latest",
+        "eslint-config-prettier": "^10.1.1"
+    },
+    "peerDependencies": {
+        "typescript": "^5.8.2"
+    },
+    "dependencies": {
+        "@calamari-radix/gateway-ez-mode": "^1.6.2",
+        "@calamari-radix/sbor-ez-mode": "^1.2.1",
+        "@eslint/js": "^9.23.0",
+        "@radixdlt/babylon-gateway-api-sdk": "^1.10.1",
+        "@radixdlt/rola": "^2.1.0",
+        "bignumber.js": "^9.3.0",
+        "canvas": "^3.1.2",
+        "chart.js": "^4.5.0",
+        "chartjs-node-canvas": "^5.0.0",
+        "decimal.js": "^10.5.0",
+        "discord.js": "^14.21.0",
+        "eslint": "^9.23.0",
+        "node-cron": "^4.1.1",
+        "typescript-eslint": "^8.29.0"
+    }
 }

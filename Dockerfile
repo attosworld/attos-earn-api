@@ -18,7 +18,7 @@ FROM base AS build
 
 # Install packages needed to build node modules
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3
+    apt-get install --no-install-recommends -y build-essential pkg-config python-is-python3 build-essential fontconfig fonts-freefont-ttf libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev
 
 # Install node modules
 COPY bun.lock package-lock.json package.json ./
@@ -34,6 +34,11 @@ FROM base
 # Copy built application
 COPY --from=build /app /app
 
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y fontconfig fonts-freefont-ttf
+
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
+ENV FONTCONFIG_PATH=/etc/fonts
+ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 CMD [ "bun", "run", "start" ]
