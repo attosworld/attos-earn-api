@@ -158,7 +158,7 @@ export async function getV2Strategies() {
                       info_url:
                           TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].infoUrl,
                       resource_address: WEFT_RESOURCE_ADDRESS,
-                      provider: 'Defiplaza',
+                      provider: 'Weft',
                       bonus_type: 'APR',
                       bonus_value: new Decimal(weftStaking.apr)
                           .times(100)
