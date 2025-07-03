@@ -8,6 +8,7 @@ import {
     WEFT_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
 } from './resourceAddresses'
+import { stakeImplementationMethod } from './stakingStrategyV2'
 
 export interface BaseStrategy {
     name: string
@@ -32,6 +33,9 @@ export interface LendingStrategy extends BaseStrategy {
 export interface StakingStrategy extends BaseStrategy {
     strategy_type: 'Staking'
     total_stake: number
+    stakeComponent: string
+    stakeMethod: string
+    requireOptionalProof?: boolean
 }
 
 export interface LiquidationStrategy extends BaseStrategy {
@@ -112,12 +116,16 @@ export async function getV2Strategies() {
         ],
     }))
 
-    const defiplazaRemapped = defiplazaStakeTokens.map((token) => ({
+    const stakingImplementations = await stakeImplementationMethod({
+        resourceAddresses: [WEFT_RESOURCE_ADDRESS],
+    })
+
+    const defiplazaStakingRemapped = defiplazaStakeTokens.map((token) => ({
         name: TOKEN_PRICE_CACHE[token.token].name,
         symbol: TOKEN_PRICE_CACHE[token.token].symbol,
         icon_url: TOKEN_PRICE_CACHE[token.token].icon_url,
         info_url: token.infoUrl,
-        resource_address: token.sToken,
+        resource_address: token.token,
         provider: 'Defiplaza',
         bonus_type: 'APY',
         bonus_value: new Decimal(token.intervalAmount.trim())
@@ -131,12 +139,15 @@ export async function getV2Strategies() {
             { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
         ],
         rewardTokens: [TOKEN_PRICE_CACHE[token.token].symbol],
+        stakeComponent: token.address,
+        stakeMethod: 'add_stake',
+        requireOptionalProof: false,
     }))
 
     const allStrategies = [
         ...weftRemapped,
         ...rootRemapped,
-        ...defiplazaRemapped,
+        ...defiplazaStakingRemapped,
         ...(weftStaking
             ? ([
                   {
@@ -163,6 +174,15 @@ export async function getV2Strategies() {
                       rewardTokens: [
                           TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].symbol,
                       ],
+                      stakeComponent:
+                          stakingImplementations[WEFT_RESOURCE_ADDRESS]
+                              ?.stakeComponent,
+                      stakeMethod:
+                          stakingImplementations[WEFT_RESOURCE_ADDRESS]
+                              ?.stakeMethod,
+                      requireOptionalProof:
+                          stakingImplementations[WEFT_RESOURCE_ADDRESS]
+                              ?.requireOptionalProof,
                   },
               ] as StakingStrategy[])
             : []),
