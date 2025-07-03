@@ -65,7 +65,18 @@ export const stakeImplementationMethod = async ({
                 },
             })
 
-        // Process each component in the batch
+        // Collect package addresses for batch processing
+        const packageAddresses: string[] = []
+        const componentToPackage: Record<string, string> = {}
+        const componentData: Record<
+            string,
+            {
+                blueprintName: string
+                index: number
+            }
+        > = {}
+
+        // Process each component in the batch to collect package addresses
         for (let j = 0; j < batch.length; j++) {
             const stakeComponent = batch[j]
             const componentDetail = componentDetails.items[j]
@@ -74,63 +85,98 @@ export const stakeImplementationMethod = async ({
             const blueprintName = componentDetail.blueprint_name
             const packageAddress = componentDetail.package_address
 
-            if (!packageAddress) {
-                continue
+            if (packageAddress) {
+                packageAddresses.push(packageAddress)
+                componentToPackage[stakeComponent] = packageAddress
+                componentData[stakeComponent] = {
+                    blueprintName,
+                    index: j,
+                }
             }
+        }
 
-            // Get package details
-            const packageDetails = (
+        // Batch request package details
+        if (packageAddresses.length === 0) continue
+
+        // Process package addresses in batches of 20
+        for (let k = 0; k < packageAddresses.length; k += 20) {
+            const packageBatch = packageAddresses.slice(k, k + 20)
+
+            const packageDetailsResponse =
                 await gatewayApi.state.innerClient.stateEntityDetails({
                     stateEntityDetailsRequest: {
-                        addresses: [packageAddress],
+                        addresses: packageBatch,
                     },
                 })
-            ).items[0].details as StateEntityDetailsResponsePackageDetails
 
-            const functionsAndMethods = (
-                packageDetails.blueprints?.items.find((item) => {
-                    return item.name === blueprintName
-                })?.definition as {
-                    function_exports: Record<string, Record<string, string>>
-                }
-            )?.function_exports
+            // Process each package in the batch
+            for (let p = 0; p < packageBatch.length; p++) {
+                const packageAddress = packageBatch[p]
+                const packageDetails = packageDetailsResponse.items[p]
+                    .details as StateEntityDetailsResponsePackageDetails
 
-            if (!functionsAndMethods) {
-                continue
-            }
+                // Find components that use this package
+                const componentsUsingPackage = Object.entries(
+                    componentToPackage
+                )
+                    .filter(([, pkg]) => pkg === packageAddress)
+                    .map(([component]) => component)
 
-            const foundStakeMethod = Object.keys(COMPATIBLE_METHOD).find(
-                (key) =>
-                    functionsAndMethods[
-                        COMPATIBLE_METHOD[
-                            key as keyof typeof COMPATIBLE_METHOD
-                        ] as keyof typeof functionsAndMethods
-                    ]
-            ) as keyof typeof COMPATIBLE_METHOD
+                for (const stakeComponent of componentsUsingPackage) {
+                    const { blueprintName, index } =
+                        componentData[stakeComponent]
 
-            if (!foundStakeMethod) {
-                continue
-            }
+                    const functionsAndMethods = (
+                        packageDetails.blueprints?.items.find((item) => {
+                            return item.name === blueprintName
+                        })?.definition as {
+                            function_exports: Record<
+                                string,
+                                Record<string, string>
+                            >
+                        }
+                    )?.function_exports
 
-            const stakeReceipt = (
-                componentDetails.items[j].metadata.items.find(
-                    (m) => m.key === 'stake_receipt'
-                )?.value.typed as MetadataGlobalAddressValue
-            )?.value
+                    if (!functionsAndMethods) {
+                        continue
+                    }
 
-            // Find all resource addresses that map to this stake component
-            const matchingResourceAddresses = Object.entries(
-                resourceToStakeComponent
-            )
-                .filter(([_, component]) => component === stakeComponent)
-                .map(([resourceAddress]) => resourceAddress)
+                    const foundStakeMethod = Object.keys(
+                        COMPATIBLE_METHOD
+                    ).find(
+                        (key) =>
+                            functionsAndMethods[
+                                COMPATIBLE_METHOD[
+                                    key as keyof typeof COMPATIBLE_METHOD
+                                ] as keyof typeof functionsAndMethods
+                            ]
+                    ) as keyof typeof COMPATIBLE_METHOD
 
-            // Add an entry for each matching resource address
-            for (const resourceAddress of matchingResourceAddresses) {
-                results[resourceAddress] = {
-                    stakeComponent,
-                    stakeMethod: COMPATIBLE_METHOD[foundStakeMethod],
-                    ...(stakeReceipt && { requireOptionalProof: true }),
+                    if (!foundStakeMethod) {
+                        continue
+                    }
+
+                    const stakeReceipt = (
+                        componentDetails.items[index].metadata.items.find(
+                            (m) => m.key === 'stake_receipt'
+                        )?.value.typed as MetadataGlobalAddressValue
+                    )?.value
+
+                    // Find all resource addresses that map to this stake component
+                    const matchingResourceAddresses = Object.entries(
+                        resourceToStakeComponent
+                    )
+                        .filter(([, component]) => component === stakeComponent)
+                        .map(([resourceAddress]) => resourceAddress)
+
+                    // Add an entry for each matching resource address
+                    for (const resourceAddress of matchingResourceAddresses) {
+                        results[resourceAddress] = {
+                            stakeComponent,
+                            stakeMethod: COMPATIBLE_METHOD[foundStakeMethod],
+                            ...(stakeReceipt && { requireOptionalProof: true }),
+                        }
+                    }
                 }
             }
         }
