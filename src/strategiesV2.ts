@@ -42,6 +42,7 @@ export interface StakingStrategy extends BaseStrategy {
 export interface LiquidationStrategy extends BaseStrategy {
     strategy_type: 'Liquidation'
     deposited: string | number
+    reservoirComponent: string
 }
 
 export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
@@ -64,6 +65,7 @@ export async function getV2Strategies() {
         icon_url: TOKEN_PRICE_CACHE[pool.resourceAddress].icon_url,
         info_url: TOKEN_PRICE_CACHE[pool.resourceAddress].infoUrl,
         resource_address: pool.resourceAddress,
+        reservoirComponent: pool.reservoirComponent,
         provider: 'Flux',
         bonus_type: 'APR',
         bonus_value: pool.totalApr,

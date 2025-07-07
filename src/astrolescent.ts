@@ -45,26 +45,6 @@ export const tokensRequest = async () => {
         })
 }
 
-export type AstrolascentSwapResponse = {
-    inputTokens: number
-    outputTokens: number
-    priceImpact: number
-    swapFee: string
-    manifest: string
-    routes: Array<{
-        pools: Array<{
-            type: string
-            baseToken: string
-            quoteToken: string
-        }>
-        startPrice: string
-        endPrice: string
-        impact: number
-        tokensIn: number
-        tokensOut: number
-    }>
-}
-
 export interface AstrolescentSwapRequest {
     inputToken: string
     outputToken: string

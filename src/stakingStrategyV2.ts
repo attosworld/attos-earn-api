@@ -7,7 +7,7 @@ import { gatewayApi, gatewayApiEzMode, STRATEGIES_V2_CACHE } from '..'
 import type { StakingStrategy } from './strategiesV2'
 import { astrolescentRequest } from './astrolescent'
 import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
-import type { AstrolascentSwapResponse } from '../astrolescent'
+import type { AstrolescentSwapResponse } from './astrolescent'
 import {
     ATTOS_ROYALTY_COMPONENT,
     CHARGE_ROYALTY_METHOD,
@@ -256,7 +256,7 @@ export async function handleStrategiesV2Staking({
         outputToken: strategy.resource_address,
         amount,
     })
-        .then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+        .then((res) => res.json() as Promise<AstrolescentSwapResponse>)
         .catch(() => undefined)
 
     const buyManifestWithoutDeposit = swapResponse?.manifest?.split(';')

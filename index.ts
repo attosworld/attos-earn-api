@@ -26,6 +26,7 @@ import {
 import { validateDiscordUserToken } from './src/discord-api'
 import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
 import { getTokenNews, updateNewsCache } from './src/news'
+import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -606,15 +607,14 @@ Bun.serve({
 
         if (url.pathname === '/v2/strategies/execute' && req.method === 'GET') {
             const accountAddress = url.searchParams.get('account')
-            const componentAddress = url.searchParams.get('component')
             const amount = url.searchParams.get('amount')
+            const strategy = url.searchParams.get('strategy_type')
 
-            if (!accountAddress || !componentAddress || !amount) {
+            if (!accountAddress || !amount) {
                 return new Response(
                     JSON.stringify({
                         error_codes: [
                             'account_address_required',
-                            'component_address_required',
                             'amount_required',
                         ],
                     }),
@@ -627,11 +627,53 @@ Bun.serve({
                 )
             }
 
-            const manifestResponse = await handleStrategiesV2Staking({
-                accountAddress,
-                componentAddress,
-                amount,
-            })
+            let manifestResponse: { manifest: string } | undefined
+
+            if (strategy === 'Staking') {
+                const componentAddress = url.searchParams.get('component')
+
+                if (!componentAddress) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: ['component_address_required'],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleStrategiesV2Staking({
+                    accountAddress,
+                    componentAddress,
+                    amount,
+                })
+            } else if (strategy === 'Liquidation') {
+                const resourceAddress = url.searchParams.get('resource_address')
+
+                if (!resourceAddress) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: ['component_address_required'],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleLiquidationStrategy({
+                    accountAddress,
+                    resourceAddress,
+                    amount,
+                })
+            }
 
             if (!manifestResponse) {
                 return new Response(
@@ -821,6 +863,7 @@ cron.schedule('*/30 * * * *', () => {
     })
 })
 
+// update news cache every 24 hours
 cron.schedule('0 0 * * *', () => {
     updateNewsCache()
 })

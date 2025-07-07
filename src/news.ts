@@ -64,6 +64,10 @@ function writeNewsToFile(tokenAddress: string, news: TokenNews[]) {
 }
 
 export async function updateNewsCache() {
+    if (!process.env.CACHE_DIR) {
+        return
+    }
+
     console.log('Updating news cache...', new Date().toISOString())
     const tokens = await tokensRequest()
 

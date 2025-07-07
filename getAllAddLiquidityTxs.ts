@@ -53,6 +53,7 @@ export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
 
 export const OPEN_ADD_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'add_stake']
 export const OPEN_STAKE_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'stake']
+export const FLUX_POSITION = [CHARGE_ROYALTY_METHOD, 'contribute_to_pool']
 
 const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
     (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&

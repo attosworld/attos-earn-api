@@ -12,6 +12,7 @@ import {
 } from '.'
 import {
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
+    FLUX_POSITION,
     getAllAddLiquidityTxs,
     OPEN_ADD_STAKE_POSITION,
     OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST,
@@ -55,8 +56,9 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
-import type { StakingStrategy } from './src/strategiesV2'
+import type { LiquidationStrategy, StakingStrategy } from './src/strategiesV2'
 import type { AstrolascentSwapResponse } from './astrolescent'
+import { FUSD } from './src/liquidiationStrategyV2'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -1061,6 +1063,118 @@ ${swapToXrdManifest.manifest}`
             provider: `${strategyPool.provider} Staking`,
             tx: tx.intent_hash,
             poolName: `Swap & Stake ${tokenPrices[strategyPool.resource_address].symbol}`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest,
+        }
+    } else if (
+        FLUX_POSITION.every((method) =>
+            tx.manifest_instructions?.includes(method)
+        )
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const fluxPoolToken = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        if (!fluxPoolToken) {
+            return
+        }
+
+        const poolComponent = await gatewayApiEzMode.state
+            .getResourceInfo(fluxPoolToken.resource_address)
+            .then((m) =>
+                m.metadata.metadataExtractor.getMetadataValue(
+                    'pool',
+                    'GlobalAddress'
+                )
+            )
+
+        if (!poolComponent) {
+            return
+        }
+
+        const token = await gatewayApiEzMode.state
+            .getComponentInfo(poolComponent)
+            .then((m) =>
+                m.metadata.metadataExtractor
+                    .getMetadataValue('pool_resources', 'GlobalAddressArray')
+                    ?.find((a) => a !== FUSD)
+            )
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                (sp as LiquidationStrategy).resource_address === token &&
+                sp.strategy_type === 'Liquidation'
+        ) as LiquidationStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+CALL_METHOD Address("${address}") "withdraw" Address("${fluxPoolToken.resource_address}") Decimal("${fluxPoolToken?.balance_change}");
+TAKE_ALL_FROM_WORKTOP Address("${fluxPoolToken.resource_address}") Bucket("lp");
+CALL_METHOD Address("${strategyPool.reservoirComponent}") "withdraw_from_pool" Address("${strategyPool.resource_address}") Bucket("lp");
+        `
+
+        const manifest = `
+${unstakeManifest}
+CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) => +rc.amount > 0 && rc.resource_address === FUSD
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const currentValueXrd = new Decimal(
+            value?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[FUSD].tokenPriceXRD)
+
+        const currentValueUsd = new Decimal(
+            value?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[FUSD].tokenPriceUSD)
+
+        const swapToXrdManifest = await astrolescentRequest({
+            inputToken: FUSD,
+            outputToken: XRD_RESOURCE_ADDRESS,
+            amount: value?.resource_changes[0].amount ?? '0',
+            accountAddress: address,
+        }).then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+
+        const closeManifest = `
+${unstakeManifest}
+TAKE_ALL_FROM_WORKTOP Address("${FUSD}") Bucket("unstake");
+CALL_METHOD Address("${address}") "deposit" Bucket("unstake");
+${swapToXrdManifest.manifest}`
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `ILIS ${strategyPool.provider}`,
+            tx: tx.intent_hash,
+            poolName: `Swap & LP fUSD`,
             leftAlt: tokenPrices[strategyPool.resource_address].name,
             leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
             closeManifest,
