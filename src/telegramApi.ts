@@ -1,12 +1,14 @@
 import { Api, TelegramClient } from 'telegram'
 import { StringSession } from 'telegram/sessions'
+import { gatewayApiEzMode } from '..'
 
-export interface TelegramMessage {
+export interface TokenNews {
     id: number
     date: Date
     text?: string
-    message?: string
-    media?: Api.TypeMessageMedia
+    url: string
+    // message?: string
+    // media?: Api.TypeMessageMedia
 }
 
 /**
@@ -24,7 +26,7 @@ export async function getChannelMessages(
     apiHash: string,
     sessionString: string = '',
     limit: number = 100
-): Promise<TelegramMessage[]> {
+): Promise<TokenNews[]> {
     // Initialize the client
     const client = new TelegramClient(
         new StringSession(sessionString),
@@ -58,7 +60,7 @@ export async function getChannelMessages(
         })
 
         // Transform messages to our interface format
-        const transformedMessages: TelegramMessage[] = messages.map((msg) => ({
+        const transformedMessages: TokenNews[] = messages.map((msg) => ({
             id: msg.id,
             date: new Date(msg.date * 1000),
             text: msg.message,
@@ -81,6 +83,8 @@ export async function getChannelMessages(
     }
 }
 
+let client: TelegramClient | undefined
+
 /**
  * Get all messages from a Telegram channel with pagination
  * @param channelUsername The username of the channel
@@ -92,29 +96,34 @@ export async function getChannelMessages(
  * @returns Promise with all messages from the channel
  */
 export async function getAllChannelMessages(
-    channelUsername: string,
+    channelUsername: string | undefined,
     apiId: number,
     apiHash: string,
     sessionString: string,
     batchSize: number = 100,
     maxMessages: number = 0
-): Promise<TelegramMessage[]> {
-    // Initialize the client
-    const client = new TelegramClient(
-        new StringSession(sessionString),
-        apiId,
-        apiHash,
-        { connectionRetries: 3 }
-    )
+): Promise<TokenNews[]> {
+    if (!channelUsername) {
+        return []
+    }
 
-    const allMessages: TelegramMessage[] = []
+    if (!client) {
+        // Initialize the client
+        client = new TelegramClient(
+            new StringSession(sessionString),
+            apiId,
+            apiHash,
+            { connectionRetries: 3 }
+        )
+        // Connect to Telegram
+        await client.connect()
+    }
+
+    const allMessages: TokenNews[] = []
 
     let progress = 0
 
     try {
-        // Connect to Telegram
-        await client.connect()
-
         // Ensure we're logged in
         if (!(await client.isUserAuthorized())) {
             throw new Error(
@@ -144,27 +153,27 @@ export async function getAllChannelMessages(
                 break
             }
 
-            console.log(messages.length)
             // Transform messages
-            const transformedMessages: TelegramMessage[] = messages
+            const transformedMessages: TokenNews[] = messages
                 .filter((msg) => msg.pinned)
                 .map((msg) => ({
                     id: msg.id,
                     date: new Date(msg.date * 1000),
                     text: msg.message,
-                    media: msg.media,
-                    replyTo: msg.replyTo?.replyToMsgId,
-                    fromId:
-                        (
-                            msg.fromId as { userId: Api.long }
-                        )?.userId?.toJSNumber() || 0,
-                    peerId:
-                        (
-                            (msg.peerId as { channelId: Api.long })
-                                ?.channelId ||
-                            (msg.peerId as { userId: Api.long })?.userId
-                        )?.toJSNumber() || 0,
-                    groupedId: msg.groupedId?.toString(),
+                    url: `https://t.me/${channelUsername}/${msg.id}`,
+                    // media: msg.media,
+                    // replyTo: msg.replyTo?.replyToMsgId,
+                    // fromId:
+                    //     (
+                    //         msg.fromId as { userId: Api.long }
+                    //     )?.userId?.toJSNumber() || 0,
+                    // peerId:
+                    //     (
+                    //         (msg.peerId as { channelId: Api.long })
+                    //             ?.channelId ||
+                    //         (msg.peerId as { userId: Api.long })?.userId
+                    //     )?.toJSNumber() || 0,
+                    // groupedId: msg.groupedId?.toString(),
                 }))
 
             allMessages.push(...transformedMessages)
@@ -174,11 +183,9 @@ export async function getAllChannelMessages(
 
             progress = progress + 1
 
-            console.log('progress', progress)
             shouldContinue = progress < maxMessages
         }
 
-        console.log(allMessages.length)
         return allMessages
     } catch (error) {
         console.error('Error fetching all Telegram channel messages:', error)
@@ -192,7 +199,7 @@ const sessionString = process.env.TELEGRAM_SESSION_STRING! // Your session strin
 
 export async function getMessages(
     channelUsername: string
-): Promise<TelegramMessage[]> {
+): Promise<TokenNews[]> {
     try {
         // For fetching all messages with pagination
         const allMessages = await getAllChannelMessages(
@@ -200,16 +207,24 @@ export async function getMessages(
             apiId,
             apiHash,
             sessionString,
-            2000, // batch size
+            500, // batch size
             0 // max messages (0 for all)
         )
 
-        console.log(allMessages.length)
-
         return allMessages
     } catch {
-        return [] as TelegramMessage[]
+        return [] as TokenNews[]
     }
+}
+
+export async function getTelegramSocial(token: string) {
+    return gatewayApiEzMode.state.getResourceInfo(token).then(
+        (res) =>
+            res.metadata.metadataExtractor
+                .getMetadataValue('social_urls', 'UrlArray')
+                ?.find((s) => s.includes('t.me'))
+                ?.split('t.me/')[1]
+    )
 }
 
 export const TOKEN_NEWS_CACHE: Record<string, string> = {
@@ -217,4 +232,18 @@ export const TOKEN_NEWS_CACHE: Record<string, string> = {
         'astrolescent_official',
     resource_rdx1tk3fxrz75ghllrqhyq8e574rkf4lsq2x5a0vegxwlh3defv225cth3:
         'WeftFinance',
+    resource_rdx1t4r86qqjtzl8620ahvsxuxaf366s6rf6cpy24psdkmrlkdqvzn47c2:
+        'ilisdao',
+    resource_rdx1t52pvtk5wfhltchwh3rkzls2x0r98fw9cjhpyrf3vsykhkuwrf7jg8:
+        'ociswap',
+    resource_rdx1t42hpqvsk4t42l6aw09hwphd2axvetp6gvas9ztue0p30f4hzdwxrp:
+        'RedDicks_XRD',
+    resource_rdx1t5xv44c0u99z096q00mv74emwmxwjw26m98lwlzq6ddlpe9f5cuc7s:
+        'early_xrd',
+    resource_rdx1t5kmyj54jt85malva7fxdrnpvgfgs623yt7ywdaval25vrdlmnwe97:
+        're_HUG',
+    resource_rdx1t4kc5ljyrwlxvg54s6gnctt7nwwgx89h9r2gvrpm369s23yhzyyzlx:
+        'wowoproject_xrd',
+    resource_rdx1tk4y4ct50fzgyjygm7j3y6r3cw5rgsatyfnwdz64yp5t388v0atw8w:
+        'DanCoinXRD',
 }

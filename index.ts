@@ -24,8 +24,8 @@ import {
     verifyRola,
 } from './src/rola'
 import { validateDiscordUserToken } from './src/discord-api'
-import { getMessages, TOKEN_NEWS_CACHE } from './src/telegramApi'
 import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
+import { getTokenNews, updateNewsCache } from './src/news'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -39,6 +39,8 @@ export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
 }
 
 export const CACHE_DIR = process.env.CACHE_DIR || './cache'
+
+export const NEWS_CACHE_DIR = `${CACHE_DIR}/news`
 
 if (!existsSync(CACHE_DIR)) {
     // If it doesn't exist, create the directory
@@ -144,8 +146,6 @@ const corsHeaders = {
 
 // Cache for pools
 export let POOLS_CACHE: Pool[] | null = null
-
-const CACHE_DURATION = 60000
 
 // Function to update the cache
 async function updatePoolsCache(bridgedTokens: Set<string>) {
@@ -672,15 +672,12 @@ Bun.serve({
                 )
             }
 
-            return new Response(
-                JSON.stringify(await getMessages(TOKEN_NEWS_CACHE[token])),
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...corsHeaders,
-                    },
-                }
-            )
+            return new Response(JSON.stringify(await getTokenNews(token)), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
         }
 
         if (url.pathname === '/discord/verify-code') {
@@ -797,23 +794,40 @@ if (process.env.CACHE_DIR) {
 console.log('Finished volume pools cache')
 
 // Initial cache update
-await Promise.all([updatePoolsCache(BRIDGED_TOKENS), updateStrategiesV2Cache()])
+await Promise.all([
+    updatePoolsCache(BRIDGED_TOKENS),
+    updateStrategiesV2Cache(),
+    updateNewsCache(),
+])
 
-// Update pools cache every 5 minutes using cron
-// "*/5 * * * *" means "every 5 minutes"
-cron.schedule('*/5 * * * *', () => {
+// Update pools cache every 10 minutes using cron
+// "*/10 * * * *" means "every 10 minutes"
+cron.schedule('*/10 * * * *', () => {
     console.log('Running pools cache update (scheduled task)')
     updatePoolsCache(BRIDGED_TOKENS)
 })
 
-cron.schedule('*/5 * * * *', () => {
+cron.schedule('*/10 * * * *', () => {
     console.log('Running strategies cache update (scheduled task)')
     updateStrategiesV2Cache()
 })
 
-// Update volume cache every 15 minutes using cron
-// "*/15 * * * *" means "every 15 minutes"
-cron.schedule('*/15 * * * *', () => {
+// Update volume cache every 30 minutes using cron
+// "*/15 * * * *" means "every 30 minutes"
+cron.schedule('*/30 * * * *', () => {
+    console.log('Running volume cache update (scheduled task)')
+    updatePoolsVolumeCache().then(() => {
+        console.log('finished updating volume cache (sheduled task)')
+    })
+})
+
+cron.schedule('0 0 * * *', () => {
+    updateNewsCache()
+})
+
+// Update volume cache every 30 minutes using cron
+// "*/15 * * * *" means "every 30 minutes"
+cron.schedule('*/30 * * * *', () => {
     console.log('Running volume cache update (scheduled task)')
     updatePoolsVolumeCache().then(() => {
         console.log('finished updating volume cache (sheduled task)')

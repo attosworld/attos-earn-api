@@ -16,6 +16,7 @@ export interface TokenInfo {
     icon_url: string
     createdAt: string | null
     tags: string[] | null
+    tvl: number
 }
 
 export type TokensResponse = Array<TokenInfo>
