@@ -8,15 +8,21 @@ import {
     gatewayApi,
     gatewayApiEzMode,
     PAIR_NAME_CACHE,
+    STRATEGIES_V2_CACHE,
 } from '.'
 import {
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     getAllAddLiquidityTxs,
+    OPEN_ADD_STAKE_POSITION,
     OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST,
     OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     type EnhancedTransactionInfo,
 } from './getAllAddLiquidityTxs'
-import { tokensRequest, type TokenInfo } from './src/astrolescent'
+import {
+    astrolescentRequest,
+    tokensRequest,
+    type TokenInfo,
+} from './src/astrolescent'
 import {
     closeDefiplazaLpPosition,
     closeDefiplazaLpValue,
@@ -49,6 +55,8 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
+import type { StakingStrategy } from './src/strategiesV2'
+import type { AstrolascentSwapResponse } from './astrolescent'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -352,7 +360,6 @@ function calculateCurrentValue(
             )
             currentValue = xValue.plus(yValue)
         } else if (isOciswapV2LPInfo(underlyingTokens)) {
-            console.log('Processing Ociswap V2 LP transaction')
             underlyingTokens.forEach((lp) => {
                 const xValue = new Decimal(lp.x_amount.token).times(
                     tokenPrices[lp.left_token]?.tokenPriceUSD || 0
@@ -970,6 +977,94 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
             borrowAmount,
             closeManifest,
         }
+    } else if (
+        OPEN_ADD_STAKE_POSITION.every((method) =>
+            tx.manifest_instructions?.includes(method)
+        )
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const stakeToken = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                (sp as StakingStrategy).sToken === stakeToken?.resource_address
+        ) as StakingStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+CALL_METHOD Address("${address}") "withdraw" Address("${stakeToken?.resource_address}") Decimal("${stakeToken?.balance_change}");
+TAKE_ALL_FROM_WORKTOP Address("${stakeToken?.resource_address}") Bucket("stake");
+CALL_METHOD Address("${strategyPool.stakeComponent}") "remove_stake" Bucket("stake");
+        `
+
+        const manifest = `
+${unstakeManifest}
+CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    +rc.amount > 0 &&
+                    rc.resource_address === strategyPool?.resource_address
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const currentValueXrd = new Decimal(
+            value?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[strategyPool.resource_address].tokenPriceXRD)
+
+        const currentValueUsd = new Decimal(
+            value?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[strategyPool.resource_address].tokenPriceUSD)
+
+        const swapToXrdManifest = await astrolescentRequest({
+            inputToken: strategyPool.resource_address,
+            outputToken: XRD_RESOURCE_ADDRESS,
+            amount: value?.resource_changes[0].amount ?? '0',
+            accountAddress: address,
+        }).then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+
+        const closeManifest = `
+${unstakeManifest}
+TAKE_ALL_FROM_WORKTOP Address("${strategyPool.resource_address}") Bucket("unstake");
+CALL_METHOD Address("${address}") "deposit" Bucket("unstake");
+${swapToXrdManifest.manifest}`
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `${strategyPool.provider} Staking`,
+            tx: tx.intent_hash,
+            poolName: `Swap & Stake ${tokenPrices[strategyPool.resource_address].symbol}`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest,
+        }
     }
     return null
 }
@@ -1189,7 +1284,9 @@ export async function getAccountLPPortfolio(address: string) {
                     : pnlAmount.div(investedAmountUsd).times(100).toFixed(20)
 
                 return {
-                    poolName: `${poolName} Root Finance Strategy`,
+                    poolName:
+                        strategyTx.poolName ??
+                        `${poolName} Root Finance Strategy`,
                     leftIcon,
                     rightIcon:
                         rightIcon || 'https://app.rootfinance.xyz/favicon.ico',

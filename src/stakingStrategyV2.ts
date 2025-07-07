@@ -3,7 +3,15 @@ import type {
     StateEntityDetailsResponseComponentDetails,
     StateEntityDetailsResponsePackageDetails,
 } from '@radixdlt/babylon-gateway-api-sdk'
-import { gatewayApi, gatewayApiEzMode } from '..'
+import { gatewayApi, gatewayApiEzMode, STRATEGIES_V2_CACHE } from '..'
+import type { StakingStrategy } from './strategiesV2'
+import { astrolescentRequest } from './astrolescent'
+import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
+import type { AstrolascentSwapResponse } from '../astrolescent'
+import {
+    ATTOS_ROYALTY_COMPONENT,
+    CHARGE_ROYALTY_METHOD,
+} from '../getAllAddLiquidityTxs'
 
 const COMPATIBLE_METHOD = {
     AddStake: 'add_stake',
@@ -183,4 +191,107 @@ export const stakeImplementationMethod = async ({
     }
 
     return results
+}
+
+export function getSwapAndStakeManifest({
+    swapManifest,
+    account,
+    tokenAddress,
+    componentAddress,
+    method,
+    requireOptionalProof,
+}: {
+    swapManifest: string
+    account: string
+    tokenAddress: string
+    amount: string
+    componentAddress: string
+    method: string
+    requireOptionalProof: boolean | undefined
+}) {
+    return `
+CALL_METHOD
+Address("${ATTOS_ROYALTY_COMPONENT}")
+"${CHARGE_ROYALTY_METHOD}"
+;
+${swapManifest}
+TAKE_ALL_FROM_WORKTOP
+  Address("${tokenAddress}")
+  Bucket("x")
+;
+CALL_METHOD
+    Address("${componentAddress}")
+    "${method}"
+    Bucket("x")
+    ${requireOptionalProof ? 'None' : ''}
+;
+CALL_METHOD
+    Address("${account}")
+    "deposit_batch"
+    Expression("ENTIRE_WORKTOP")
+;
+    `
+}
+
+export async function handleStrategiesV2Staking({
+    accountAddress,
+    amount,
+    componentAddress,
+}: {
+    accountAddress: string
+    amount: string
+    componentAddress: string
+}): Promise<{ manifest: string } | undefined> {
+    const strategy = STRATEGIES_V2_CACHE.find(
+        (s) => (s as StakingStrategy).stakeComponent === componentAddress
+    ) as StakingStrategy | undefined
+
+    if (!strategy) {
+        return
+    }
+
+    const swapResponse = await astrolescentRequest({
+        accountAddress,
+        inputToken: XRD_RESOURCE_ADDRESS,
+        outputToken: strategy.resource_address,
+        amount,
+    })
+        .then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+        .catch(() => undefined)
+
+    const buyManifestWithoutDeposit = swapResponse?.manifest?.split(';')
+
+    if (!buyManifestWithoutDeposit) {
+        return
+    }
+
+    const depositCall = buyManifestWithoutDeposit?.findIndex((m) =>
+        m.includes('deposit_batch')
+    )
+
+    if (!depositCall) {
+        return
+    }
+
+    buyManifestWithoutDeposit.splice(depositCall, 1)
+
+    const depositFeesCall = buyManifestWithoutDeposit?.findIndex((m) =>
+        m.includes('fee_bucket')
+    )
+
+    if (depositFeesCall) {
+        buyManifestWithoutDeposit.splice(depositFeesCall, 2)
+    }
+
+    return {
+        manifest: getSwapAndStakeManifest({
+            swapManifest: buyManifestWithoutDeposit?.join(';'),
+            account: accountAddress,
+            tokenAddress: strategy.resource_address,
+            amount,
+            componentAddress,
+            method: strategy.stakeMethod,
+            requireOptionalProof: strategy.requireOptionalProof,
+        }),
+    }
 }

@@ -71,6 +71,26 @@ export interface AstrolescentSwapRequest {
     accountAddress: string
 }
 
+export interface AstrolescentSwapResponse {
+    inputTokens: number
+    outputTokens: number
+    priceImpact: number
+    swapFee: string
+    manifest: string
+    routes: Array<{
+        pools: Array<{
+            type: string
+            baseToken: string
+            quoteToken: string
+        }>
+        startPrice: string
+        endPrice: string
+        impact: number
+        tokensIn: number
+        tokensOut: number
+    }>
+}
+
 export const astrolescentRequest = ({
     inputToken,
     outputToken,
@@ -90,3 +110,5 @@ export const astrolescentRequest = ({
         }),
     })
 }
+
+// https://api.astrolescent.com/price/history/resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd?days=90

@@ -13,6 +13,7 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
+import { getSurgeStats } from './src/surge'
 
 export interface Pool {
     type: string
@@ -377,6 +378,40 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                 .flatMap((arr) => arr)
         )
     ).flatMap((arr) => arr) as Pool[]
+
+    //     const surgeLp = await getSurgeStats()
+
+    //     const surgeLpPool = {
+    //         type: 'surge',
+    //         pool_type: 'single',
+    //         sub_type: 'single',
+    //         component:
+    //             'component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7',
+    //         tvl: surgeLp?.tvl,
+    //         bonus_24h: 0,
+    //         bonus_7d: ((surgeLp?.apy.value || 0) / 2) * 100,
+    //         volume_7d: surgeLp?.volume['7days'] || 0,
+    //         volume_24h: surgeLp?.volume['24hours'] || 0,
+    //         bonus_name: 'APY',
+    //         base: '',
+    //         quote: '',
+    //         deposit_link: 'https://surge.trade/liquidity',
+    //         boosted: true,
+    //         volume_per_day: [],
+    //         tags: ['stablecoin', 'perp'],
+    //         left_token:
+    //             'resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89',
+    //         left_name: 'Surge USD',
+    //         left_alt: 'sUSD',
+    //         left_icon: 'https://surge.trade/images/susd_token.png',
+    //         right_alt: '',
+    //         right_icon: '',
+    //         right_name: '',
+    //         right_token: '',
+    //         name: 'Surge USD LP',
+    //         incentivised_lp_docs:
+    //             'https://docs.surge.trade/about-surge/liquidity-providers',
+    //     } as Pool
 
     console.log('Pair names cache length:', Object.keys(PAIR_NAME_CACHE).length)
 

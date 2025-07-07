@@ -8,6 +8,7 @@ import {
 } from './resourceAddresses'
 import { getRootMarketStats, type RootMarketStats } from './rootFinance'
 import { STRATEGY_MANIFEST } from './strategyManifest'
+import { getSurgeStats } from './surge'
 
 export interface Strategy {
     id: string
@@ -62,76 +63,6 @@ export async function getRootMarketPrices(): Promise<RootMarketPrices> {
         .then((res) => res.json())
         .catch((err) => console.error(err))
 }
-
-export interface SurgeStats {
-    apy: {
-        start_datetime: string
-        tooltip: {
-            'Approx LP Rewards': number
-            'Trade Fees': number
-        }
-        value: number
-    }
-    data: {
-        pool_now: {
-            datetime: string
-            price: number
-            total_amount: number
-            total_supply: number
-        }
-        pool_past: {
-            datetime: string
-            price: number
-            total_amount: number
-            total_supply: number
-        }
-    }
-    fees_pool: {
-        '24hours': string
-        '30days': string
-        '7days': string
-        all_time: string
-    }
-    fees_protocol: {
-        '24hours': string
-        '30days': string
-        '7days': string
-        all_time: string
-    }
-    last_updated: string
-    tvl: number
-    volume: {
-        '24hours': string
-        '30days': string
-        '7days': string
-        all_time: string
-    }
-}
-
-export async function getSurgeStats(): Promise<SurgeStats | null> {
-    try {
-        const response = await fetch('https://api.surge.trade/stats', {
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-            },
-        })
-
-        if (!response.ok) {
-            console.log(
-                `getSurgeStats : HTTP error! status: ${response.status}`
-            )
-            return null
-        }
-
-        const data: SurgeStats = await response.json()
-        return data
-    } catch (error) {
-        console.error('Error fetching Surge stats:', error)
-        throw error
-    }
-}
-
 async function getRootFinanceLendXrdBorrowUsdProvideSurgeLP(
     stats: RootMarketStats
 ): Promise<Strategy | null> {

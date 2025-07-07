@@ -24,6 +24,8 @@ import {
     verifyRola,
 } from './src/rola'
 import { validateDiscordUserToken } from './src/discord-api'
+import { getMessages, TOKEN_NEWS_CACHE } from './src/telegramApi'
+import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -278,7 +280,7 @@ async function updatePoolsVolumeCache() {
     }
 }
 
-let STRATEGIES_V2_CACHE: Strategy[] = []
+export let STRATEGIES_V2_CACHE: Strategy[] = []
 
 async function updateStrategiesV2Cache() {
     STRATEGIES_V2_CACHE = await getV2Strategies()
@@ -600,6 +602,85 @@ Bun.serve({
                     ...corsHeaders,
                 },
             })
+        }
+
+        if (url.pathname === '/v2/strategies/execute' && req.method === 'GET') {
+            const accountAddress = url.searchParams.get('account')
+            const componentAddress = url.searchParams.get('component')
+            const amount = url.searchParams.get('amount')
+
+            if (!accountAddress || !componentAddress || !amount) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: [
+                            'account_address_required',
+                            'component_address_required',
+                            'amount_required',
+                        ],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            const manifestResponse = await handleStrategiesV2Staking({
+                accountAddress,
+                componentAddress,
+                amount,
+            })
+
+            if (!manifestResponse) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['invalid_strategy'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(JSON.stringify(manifestResponse), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (url.pathname === '/news' && req.method === 'GET') {
+            const token = url.searchParams.get('token')
+
+            if (!token) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['token_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(
+                JSON.stringify(await getMessages(TOKEN_NEWS_CACHE[token])),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
         }
 
         if (url.pathname === '/discord/verify-code') {
