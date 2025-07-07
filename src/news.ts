@@ -84,7 +84,10 @@ export async function updateNewsCache() {
             )
 
             // Write news to file
-            writeNewsToFile(tokenAddress, news)
+            writeNewsToFile(
+                tokenAddress,
+                news.filter((news) => news.text)
+            )
 
             // Add delay between requests to avoid rate limiting
             await sleep(1000)
