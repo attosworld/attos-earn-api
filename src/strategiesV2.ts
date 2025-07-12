@@ -19,7 +19,7 @@ export interface BaseStrategy {
     bonus_type: 'APR' | 'APY'
     strategy_type: 'Lending' | 'Staking' | 'Liquidation'
     bonus_value: number
-    provider: string
+    provider: 'Flux' | 'Defiplaza' | 'Weft Finance' | 'Root Finance'
     requiredAssets: { resource_address: string; symbol: string }[]
     rewardTokens: string[]
 }
@@ -168,7 +168,7 @@ export async function getV2Strategies() {
                       info_url:
                           TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].infoUrl,
                       resource_address: WEFT_RESOURCE_ADDRESS,
-                      provider: 'Weft',
+                      provider: 'Weft Finance',
                       bonus_type: 'APR',
                       bonus_value: +new Decimal(weftStaking.apr)
                           .times(100)

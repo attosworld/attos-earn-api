@@ -17,6 +17,8 @@ import {
     OPEN_ADD_STAKE_POSITION,
     OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST,
     OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST,
+    SWAP_LEND_ROOT,
+    SWAP_LEND_WEFT,
     type EnhancedTransactionInfo,
 } from './getAllAddLiquidityTxs'
 import {
@@ -45,6 +47,7 @@ import { s } from '@calamari-radix/gateway-ez-mode'
 import {
     TransactionStatus,
     type CommittedTransactionInfo,
+    type ProgrammaticScryptoSborValueMap,
     type TransactionFungibleBalanceChanges,
 } from '@radixdlt/babylon-gateway-api-sdk'
 import {
@@ -56,9 +59,17 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
-import type { LiquidationStrategy, StakingStrategy } from './src/strategiesV2'
-import type { AstrolascentSwapResponse } from './astrolescent'
+import type {
+    LendingStrategy,
+    LiquidationStrategy,
+    StakingStrategy,
+} from './src/strategiesV2'
+import type { AstrolescentSwapResponse } from './src/astrolescent'
 import { FUSD } from './src/liquidiationStrategyV2'
+import {
+    CLOSE_STRATEGY_MANIFEST,
+    SLP_MANIFEST_REMOVE_LIQUIDITY,
+} from './src/surgeManifests'
 
 export interface PoolPortfolioItem {
     poolName: string
@@ -102,116 +113,6 @@ export const OciswapV2Nft = s.struct({
     left_bound: s.number(),
     right_bound: s.number(),
 })
-
-const SLP_MANIFEST_REMOVE_LIQUIDITY = `CALL_METHOD
-Address("{account}")
-"withdraw"
-Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
-Decimal("{amount}")
-;
-TAKE_ALL_FROM_WORKTOP
-Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
-Bucket("tokens")
-;
-CALL_METHOD
-Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
-"remove_liquidity"
-Bucket("tokens");
-TAKE_ALL_FROM_WORKTOP
-    Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
-    Bucket("bucket2")
-;
-CALL_METHOD
-    Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
-    "unwrap"
-    Bucket("bucket2")
-    Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
-;
-CALL_METHOD
-Address("{account}")
-"deposit_batch"
-Expression("ENTIRE_WORKTOP");`
-
-const CLOSE_STRATEGY_MANIFEST = `CALL_METHOD
-  Address("{account}")
-  "withdraw"
-  Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
-  Decimal("{surgeLpAmount}")
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
-  Bucket("surge_lp")
-;
-CALL_METHOD
-  Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
-  "remove_liquidity"
-  Bucket("surge_lp")
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
-  Bucket("susd")
-;
-CALL_METHOD
-  Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
-  "unwrap"
-  Bucket("susd")
-  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
-;
-{withdrawLossAmount}
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
-  Bucket("xusdc")
-;
-CALL_METHOD
-  Address("{account}")
-  "create_proof_of_non_fungibles"
-  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
-  Array<NonFungibleLocalId>(
-    NonFungibleLocalId("{rootNftId}")
-  )
-;
-POP_FROM_AUTH_ZONE
-  Proof("root_nft")
-;
-CLONE_PROOF
-  Proof("root_nft")
-  Proof("root_nft_2")
-;
-CALL_METHOD
-  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
-  "repay"
-  Proof("root_nft")
-  Enum<0u8>()
-  Array<Bucket>(
-    Bucket("xusdc")
-  )
-;
-CALL_METHOD
-  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
-  "remove_collateral"
-  Proof("root_nft_2")
-  Array<Tuple>(
-    Tuple(
-      Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"),
-      Decimal("{lendAmount}"),
-      false
-    )
-  )
-;
-TAKE_ALL_FROM_WORKTOP
-  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
-  Bucket("xusdc_2")
-;
-CALL_METHOD
-  Address("component_rdx1cz8daq5nwmtdju4hj5rxud0ta26wf90sdk5r4nj9fqjcde5eht8p0f")
-  "swap"
-  Bucket("xusdc_2")
-;
-CALL_METHOD
-  Address("{account}")
-  "deposit_batch"
-  Expression("ENTIRE_WORKTOP")
-;`
 
 interface EntityInfo {
     entity_address: string
@@ -1032,26 +933,45 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
             )
         ) as { resource_changes: ResourceChange[] } | undefined
 
-        const currentValueXrd = new Decimal(
-            value?.resource_changes[0].amount ?? 0
-        ).times(tokenPrices[strategyPool.resource_address].tokenPriceXRD)
-
-        const currentValueUsd = new Decimal(
-            value?.resource_changes[0].amount ?? 0
-        ).times(tokenPrices[strategyPool.resource_address].tokenPriceUSD)
-
         const swapToXrdManifest = await astrolescentRequest({
             inputToken: strategyPool.resource_address,
             outputToken: XRD_RESOURCE_ADDRESS,
             amount: value?.resource_changes[0].amount ?? '0',
             accountAddress: address,
-        }).then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+        }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
 
         const closeManifest = `
 ${unstakeManifest}
 TAKE_ALL_FROM_WORKTOP Address("${strategyPool.resource_address}") Bucket("unstake");
 CALL_METHOD Address("${address}") "deposit" Bucket("unstake");
 ${swapToXrdManifest.manifest}`
+
+        const closeManifestTx = await previewTx(closeManifest)
+
+        const closeManifestXrdValue = closeManifestTx.resource_changes?.find(
+            (rc) =>
+                (
+                    rc as {
+                        index: number
+                        resource_changes: ResourceChange[]
+                    }
+                ).resource_changes?.find(
+                    (rc) =>
+                        +rc.amount > 0 &&
+                        rc.resource_address === XRD_RESOURCE_ADDRESS &&
+                        rc.component_entity.entity_address.startsWith(
+                            'account_'
+                        )
+                )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const currentValueXrd = new Decimal(
+            closeManifestXrdValue?.resource_changes[0].amount ?? 0
+        )
+
+        const currentValueUsd = new Decimal(
+            closeManifestXrdValue?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
 
         return {
             currentValueXrd,
@@ -1143,27 +1063,45 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
                 (rc) => +rc.amount > 0 && rc.resource_address === FUSD
             )
         ) as { resource_changes: ResourceChange[] } | undefined
-
-        const currentValueXrd = new Decimal(
-            value?.resource_changes[0].amount ?? 0
-        ).times(tokenPrices[FUSD].tokenPriceXRD)
-
-        const currentValueUsd = new Decimal(
-            value?.resource_changes[0].amount ?? 0
-        ).times(tokenPrices[FUSD].tokenPriceUSD)
-
         const swapToXrdManifest = await astrolescentRequest({
             inputToken: FUSD,
             outputToken: XRD_RESOURCE_ADDRESS,
             amount: value?.resource_changes[0].amount ?? '0',
             accountAddress: address,
-        }).then((res) => res.json() as Promise<AstrolascentSwapResponse>)
+        }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
 
         const closeManifest = `
 ${unstakeManifest}
 TAKE_ALL_FROM_WORKTOP Address("${FUSD}") Bucket("unstake");
 CALL_METHOD Address("${address}") "deposit" Bucket("unstake");
 ${swapToXrdManifest.manifest}`
+
+        const closeManifestTx = await previewTx(closeManifest)
+
+        const closeManifestXrdValue = closeManifestTx.resource_changes?.find(
+            (rc) =>
+                (
+                    rc as {
+                        index: number
+                        resource_changes: ResourceChange[]
+                    }
+                ).resource_changes?.find(
+                    (rc) =>
+                        +rc.amount > 0 &&
+                        rc.resource_address === XRD_RESOURCE_ADDRESS &&
+                        rc.component_entity.entity_address.startsWith(
+                            'account_'
+                        )
+                )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const currentValueXrd = new Decimal(
+            closeManifestXrdValue?.resource_changes[0].amount ?? 0
+        )
+
+        const currentValueUsd = new Decimal(
+            closeManifestXrdValue?.resource_changes[0].amount ?? 0
+        ).times(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
 
         return {
             currentValueXrd,
@@ -1175,6 +1113,304 @@ ${swapToXrdManifest.manifest}`
             provider: `ILIS ${strategyPool.provider}`,
             tx: tx.intent_hash,
             poolName: `Swap & LP fUSD`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest,
+        }
+    } else if (
+        SWAP_LEND_WEFT.every((method) =>
+            tx.manifest_instructions?.includes(method)
+        )
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const lentToken = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        if (!lentToken) {
+            return
+        }
+
+        const token = await gatewayApiEzMode.state
+            .getResourceInfo(lentToken.resource_address)
+            .then((m) =>
+                m.metadata.metadataExtractor.getMetadataValue(
+                    'associated_resource',
+                    'GlobalAddress'
+                )
+            )
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                (sp as LendingStrategy).resource_address === token &&
+                sp.strategy_type === 'Lending' &&
+                sp.provider === 'Weft Finance'
+        ) as LendingStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+CALL_METHOD Address("${address}") "withdraw" Address("${lentToken.resource_address}") Decimal("${lentToken.balance_change}");
+TAKE_ALL_FROM_WORKTOP Address("${lentToken.resource_address}") Bucket("lp");
+CALL_METHOD Address("component_rdx1czmr02yl4da709ceftnm9dnmag7rthu0tu78wmtsn5us9j02d9d0xn") "withdraw" Array<Bucket>(Bucket("lp"));
+        `
+
+        const manifest = `
+${unstakeManifest}
+CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    +rc.amount > 0 &&
+                    rc.resource_address === strategyPool.resource_address
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const swapToXrdManifest = await astrolescentRequest({
+            inputToken: strategyPool.resource_address,
+            outputToken: XRD_RESOURCE_ADDRESS,
+            amount: value?.resource_changes[0].amount ?? '0',
+            accountAddress: address,
+        }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
+
+        const swapManifest = swapToXrdManifest.manifest.split(';')
+
+        const depositCall = swapManifest?.findIndex((m) =>
+            m.includes('withdraw')
+        )
+
+        if (depositCall === undefined) {
+            return
+        }
+
+        swapManifest.splice(depositCall, 1)
+
+        const closeManifest = `
+            ${unstakeManifest}
+            ${swapManifest.join(';')}`.trim()
+
+        const closeManifestTx = await previewTx(closeManifest)
+
+        const closeManifestXrdValue = (
+            closeManifestTx.resource_changes?.find((rc) =>
+                (
+                    rc as {
+                        index: number
+                        resource_changes: ResourceChange[]
+                    }
+                ).resource_changes?.find(
+                    (rc) =>
+                        +rc.amount > 0 &&
+                        rc.resource_address === XRD_RESOURCE_ADDRESS &&
+                        rc.component_entity.entity_address.startsWith(
+                            'account_'
+                        )
+                )
+            ) as { resource_changes: ResourceChange[] } | undefined
+        )?.resource_changes.find(
+            (r) => r.resource_address === XRD_RESOURCE_ADDRESS
+        )
+
+        const currentValueXrd = new Decimal(closeManifestXrdValue?.amount ?? 0)
+
+        const currentValueUsd = new Decimal(
+            closeManifestXrdValue?.amount ?? 0
+        ).times(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `${strategyPool.provider}`,
+            tx: tx.intent_hash,
+            poolName: `Swap & Lend ${tokenPrices[strategyPool.resource_address].symbol}`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest,
+        }
+    } else if (
+        SWAP_LEND_ROOT.every((method) =>
+            tx.manifest_instructions?.includes(method)
+        )
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const lentNft = tx.balance_changes?.non_fungible_balance_changes.find(
+            (bc) => bc.entity_address.startsWith('account_rdx')
+        )
+
+        if (!lentNft) {
+            return
+        }
+
+        const nftData = await gatewayApiEzMode.gateway.state.getNonFungibleData(
+            lentNft.resource_address,
+            lentNft.added[0]
+        )
+
+        let token: string
+        let tokenAmount: string = ''
+
+        if (nftData.data?.programmatic_json.kind === 'Tuple') {
+            const collaterals = nftData.data?.programmatic_json.fields.find(
+                (f) => f.field_name === 'collaterals'
+            ) as ProgrammaticScryptoSborValueMap | undefined
+            if (
+                collaterals &&
+                collaterals.entries[0].key.kind === 'Reference'
+            ) {
+                token = collaterals.entries[0].key.value
+            }
+            if (
+                collaterals &&
+                collaterals.entries[0].value.kind === 'PreciseDecimal'
+            ) {
+                tokenAmount = collaterals.entries[0].value.value
+            }
+        }
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                sp.resource_address === token &&
+                sp.strategy_type === 'Lending' &&
+                sp.provider === 'Root Finance'
+        ) as LendingStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+            CALL_METHOD
+              Address("${address}")
+              "create_proof_of_non_fungibles"
+              Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+              Array<NonFungibleLocalId>(
+                NonFungibleLocalId("${lentNft.added[0]}")
+              );
+            POP_FROM_AUTH_ZONE
+              Proof("root_nft");
+            CALL_METHOD
+              Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+              "remove_collateral"
+              Proof("root_nft")
+              Array<Tuple>(
+                Tuple(
+                  Address("${strategyPool.resource_address}"),
+                  Decimal("${tokenAmount}"),
+                  false
+                )
+              );
+        `.trim()
+
+        const manifest = `
+            ${unstakeManifest}
+            CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`.trim()
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    +rc.amount > 0 &&
+                    rc.resource_address === strategyPool.resource_address
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const swapToXrdManifest = await astrolescentRequest({
+            inputToken: strategyPool.resource_address,
+            outputToken: XRD_RESOURCE_ADDRESS,
+            amount: value?.resource_changes[0].amount ?? '0',
+            accountAddress: address,
+        }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
+
+        const swapManifest = swapToXrdManifest.manifest.split(';')
+
+        const depositCall = swapManifest?.findIndex((m) =>
+            m.includes('withdraw')
+        )
+
+        if (depositCall === undefined) {
+            return
+        }
+
+        swapManifest.splice(depositCall, 1)
+
+        const closeManifest = `
+            ${unstakeManifest}
+            ${swapManifest.join(';')}`.trim()
+
+        const closeManifestTx = await previewTx(closeManifest)
+
+        const closeManifestXrdValue = (
+            closeManifestTx.resource_changes?.find((rc) =>
+                (
+                    rc as {
+                        index: number
+                        resource_changes: ResourceChange[]
+                    }
+                ).resource_changes?.find(
+                    (rc) =>
+                        +rc.amount > 0 &&
+                        rc.resource_address === XRD_RESOURCE_ADDRESS &&
+                        rc.component_entity.entity_address.startsWith(
+                            'account_'
+                        )
+                )
+            ) as { resource_changes: ResourceChange[] } | undefined
+        )?.resource_changes.find(
+            (r) => r.resource_address === XRD_RESOURCE_ADDRESS
+        )
+
+        const currentValueXrd = new Decimal(closeManifestXrdValue?.amount ?? 0)
+
+        const currentValueUsd = new Decimal(
+            closeManifestXrdValue?.amount ?? 0
+        ).times(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `${strategyPool.provider}`,
+            tx: tx.intent_hash,
+            poolName: `Swap & Lend ${tokenPrices[strategyPool.resource_address].symbol}`,
             leftAlt: tokenPrices[strategyPool.resource_address].name,
             leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
             closeManifest,

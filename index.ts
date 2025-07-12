@@ -27,6 +27,7 @@ import { validateDiscordUserToken } from './src/discord-api'
 import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
 import { getTokenNews, updateNewsCache } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
+import { handleLendingStrategy } from './src/lendingStrategyV2'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -608,7 +609,12 @@ Bun.serve({
         if (url.pathname === '/v2/strategies/execute' && req.method === 'GET') {
             const accountAddress = url.searchParams.get('account')
             const amount = url.searchParams.get('amount')
-            const strategy = url.searchParams.get('strategy_type')
+            const strategy = url.searchParams.get('strategy_type') as
+                | 'Liquidation'
+                | 'Lending'
+                | 'Staking'
+                | string
+                | null
 
             if (!accountAddress || !amount) {
                 return new Response(
@@ -657,7 +663,7 @@ Bun.serve({
                 if (!resourceAddress) {
                     return new Response(
                         JSON.stringify({
-                            error_codes: ['component_address_required'],
+                            error_codes: ['resource_address_required'],
                         }),
                         {
                             headers: {
@@ -671,6 +677,33 @@ Bun.serve({
                 manifestResponse = await handleLiquidationStrategy({
                     accountAddress,
                     resourceAddress,
+                    amount,
+                })
+            } else if (strategy === 'Lending') {
+                const resourceAddress = url.searchParams.get('resource_address')
+                const provider = url.searchParams.get('provider')
+
+                if (!resourceAddress || !provider) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: [
+                                'resource_address_required',
+                                'provider_required',
+                            ],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleLendingStrategy({
+                    accountAddress,
+                    resourceAddress,
+                    provider,
                     amount,
                 })
             }

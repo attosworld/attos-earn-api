@@ -92,6 +92,43 @@ export async function getRootMarketStats(): Promise<RootMarketStats | null> {
     }
 }
 
+export function getLendManifest({
+    accountAddress,
+    resourceAddress,
+}: {
+    accountAddress: string
+    resourceAddress: string
+}) {
+    return `
+        TAKE_ALL_FROM_WORKTOP
+          Address("${resourceAddress}")
+          Bucket("bucket_0")
+        ;
+        CALL_METHOD
+          Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+          "contribute"
+          Bucket("bucket_0")
+        ;
+        TAKE_ALL_FROM_WORKTOP
+          Address("resource_rdx1tk024ja6xnstalrqk7lrzhq3pgztxn9gqavsuxuua0up7lqntxdq2a")
+          Bucket("bucket_1")
+        ;
+        CALL_METHOD
+          Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+          "create_cdp"
+          Enum<0u8>()
+          Enum<0u8>()
+          Enum<0u8>()
+          Array<Bucket>(
+            Bucket("bucket_1")
+          );
+        CALL_METHOD
+          Address("${accountAddress}")
+          "deposit_batch"
+          Expression("ENTIRE_WORKTOP");
+    `.trim()
+}
+
 export const BORROW_MANIFEST = `CALL_METHOD
 Address("component_rdx1cqjzzku4rrkz3zhm8hldn55evpgmxx9rpq9t98qtnj0asdg88f9yj6")
 "charge_strategy_royalty"

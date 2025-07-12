@@ -54,6 +54,17 @@ export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
 export const OPEN_ADD_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'add_stake']
 export const OPEN_STAKE_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'stake']
 export const FLUX_POSITION = [CHARGE_ROYALTY_METHOD, 'contribute_to_pool']
+export const SWAP_LEND_WEFT = [
+    CHARGE_ROYALTY_METHOD,
+    'swap',
+    'component_rdx1czmr02yl4da709ceftnm9dnmag7rthu0tu78wmtsn5us9j02d9d0xn',
+]
+export const SWAP_LEND_ROOT = [
+    CHARGE_ROYALTY_METHOD,
+    'swap',
+    'component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq',
+    'create_cdp',
+]
 
 const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
     (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&

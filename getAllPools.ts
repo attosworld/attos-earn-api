@@ -13,7 +13,6 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './src/resourceAddresses'
-import { getSurgeStats } from './src/surge'
 
 export interface Pool {
     type: string
@@ -416,7 +415,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
     console.log('Pair names cache length:', Object.keys(PAIR_NAME_CACHE).length)
 
     return [...remappedOciswapPools, ...remappedDefiplazaPools]
-        .filter((pool) => pool.tvl > 1 && pool.volume_7d > 0)
+        .filter((pool) => pool.tvl > 1)
         .sort((a, b) => {
             return (
                 b.volume_7d - a.volume_7d ||
