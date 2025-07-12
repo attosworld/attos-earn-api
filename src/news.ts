@@ -23,6 +23,8 @@ export const TOKEN_NEWS_CACHE: Record<string, string> = {
         'wowoproject_xrd',
     resource_rdx1tk4y4ct50fzgyjygm7j3y6r3cw5rgsatyfnwdz64yp5t388v0atw8w:
         'DanCoinXRD',
+    resource_rdx1th04p2c55884yytgj0e8nq79ze9wjnvu4rpg9d7nh3t698cxdt0cr9:
+        'corvaxchat',
 }
 
 export async function getTokenNews(tokenAddress: string): Promise<TokenNews[]> {
