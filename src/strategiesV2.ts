@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js'
-import { TOKEN_PRICE_CACHE } from '../getAllPools'
+import { TOKEN_PRICE_CACHE } from './getAllPools'
 import { getDefiplazaStakingTokens } from './defiplaza'
 import { getRootMarketStats } from './rootFinance'
 import { WeftClient } from './weftFinance'

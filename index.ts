@@ -1,10 +1,7 @@
 import { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
-import { getAllPools, type Pool } from './getAllPools'
-import {
-    getAccountLPPortfolio,
-    type PoolPortfolioItem,
-} from './getAccountLPPortfolio'
-import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
+import { getAllPools, type Pool } from './src/getAllPools'
+import { getAccountLPPortfolio } from './src/getAccountLPPortfolio'
+import { getTokenMetadata, type TokenMetadata } from './src/getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
 import { getOciswapPoolVolumePerDay } from './src/ociswap'
 import { STRATEGY_MANIFEST } from './src/strategyManifest'
@@ -14,7 +11,7 @@ import {
     astrolescentRequest,
     type AstrolescentSwapRequest,
 } from './src/astrolescent'
-import { getLpPerformance } from './pools-simulate'
+import { getLpPerformance } from './src/pools-simulate'
 import cron from 'node-cron'
 import { getV2Strategies, type Strategy } from './src/strategiesV2'
 import { startDiscordBot } from './src/discord-attos-earn-bot'
@@ -28,6 +25,7 @@ import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
 import { getTokenNews, updateNewsCache } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
+import type { PoolPortfolioItem } from './src/positionProcessor'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 

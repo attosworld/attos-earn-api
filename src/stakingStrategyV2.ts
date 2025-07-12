@@ -11,7 +11,7 @@ import type { AstrolescentSwapResponse } from './astrolescent'
 import {
     ATTOS_ROYALTY_COMPONENT,
     CHARGE_ROYALTY_METHOD,
-} from '../getAllAddLiquidityTxs'
+} from './getAllAddLiquidityTxs'
 
 const COMPATIBLE_METHOD = {
     AddStake: 'add_stake',

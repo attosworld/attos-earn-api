@@ -7,9 +7,9 @@ import {
     type StateEntityFungiblesPageRequest,
 } from '@radixdlt/babylon-gateway-api-sdk'
 import BigNumber from 'bignumber.js'
-import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
-import { gatewayApi } from '.'
-import { getVolumeAndTokenMetadata } from './src/defiplaza'
+import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
+import { gatewayApi } from '../'
+import { getVolumeAndTokenMetadata } from './defiplaza'
 
 // Global cache for LP pool data
 const GLOBAL_LP_CACHE: Record<

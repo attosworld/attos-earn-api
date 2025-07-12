@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { verifyUserAndAssignRole } from './discord-api'
-import { getAccountLPPortfolio } from '../getAccountLPPortfolio'
+import { getAccountLPPortfolio } from './getAccountLPPortfolio'
 import Decimal from 'decimal.js'
 
 export const secureRandom = (byteCount: number): string =>

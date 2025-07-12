@@ -1,6 +1,6 @@
 import { POOLS_CACHE } from '..'
-import { previewTx } from '../getAccountLPPortfolio'
 import type { Pool } from '../getAllPools'
+import { previewTx } from './previewTx'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,

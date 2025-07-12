@@ -2,7 +2,7 @@ import { STRATEGIES_V2_CACHE } from '..'
 import {
     ATTOS_ROYALTY_COMPONENT,
     CHARGE_ROYALTY_METHOD,
-} from '../getAllAddLiquidityTxs'
+} from './getAllAddLiquidityTxs'
 import {
     astrolescentRequest,
     type AstrolescentSwapResponse,

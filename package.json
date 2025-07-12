@@ -16,6 +16,7 @@
         "typescript": "^5.8.2"
     },
     "dependencies": {
+        "@aws-sdk/client-s3": "^3.844.0",
         "@calamari-radix/gateway-ez-mode": "^1.6.2",
         "@calamari-radix/sbor-ez-mode": "^1.2.1",
         "@eslint/js": "^9.23.0",

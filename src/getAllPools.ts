@@ -1,18 +1,18 @@
 import Decimal from 'decimal.js'
-import { PAIR_NAME_CACHE, BOOSTED_POOLS_CACHE, TOKEN_INFO_CACHE } from '.'
+import { PAIR_NAME_CACHE, BOOSTED_POOLS_CACHE, TOKEN_INFO_CACHE } from '../'
 import { getTokenMetadata } from './getTokenMetadata'
 import {
     getDefiplazaPools,
     getVolumeAndTokenMetadata,
     type VolumeAndTokenMetadata,
-} from './src/defiplaza'
-import { ociswapPools as getOciswapPools } from './src/ociswap'
-import { tokensRequest, type TokenInfo } from './src/astrolescent'
+} from './defiplaza'
+import { ociswapPools as getOciswapPools } from './ociswap'
+import { tokensRequest, type TokenInfo } from './astrolescent'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
-} from './src/resourceAddresses'
+} from './resourceAddresses'
 
 export interface Pool {
     type: string

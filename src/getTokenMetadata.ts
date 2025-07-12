@@ -1,4 +1,4 @@
-import { gatewayApi } from '.'
+import { gatewayApi } from '../'
 
 export interface TokenMetadata {
     dapp_definition: string

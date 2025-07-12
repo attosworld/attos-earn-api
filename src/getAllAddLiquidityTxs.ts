@@ -2,7 +2,7 @@ import type {
     CommittedTransactionInfo,
     StreamTransactionsResponse,
 } from '@radixdlt/babylon-gateway-api-sdk'
-import { gatewayApi } from '.'
+import { gatewayApi } from '../'
 
 export const OLD_ATTOS_ROYALTY_COMPONENT =
     'component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu'

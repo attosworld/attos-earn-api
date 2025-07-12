@@ -1,5 +1,4 @@
 import Decimal from 'decimal.js'
-import { previewTx, type ResourceChange } from '../getAccountLPPortfolio'
 import {
     getVolumeAndTokenMetadata,
     xrdToDfp2AmountManifest,
@@ -22,6 +21,8 @@ import {
     DFP2_RESOURCE_ADDRESS,
 } from './resourceAddresses'
 import { getRootMarketStats } from './rootFinance'
+import { previewTx } from './previewTx'
+import type { ResourceChange } from './positionProcessor'
 
 export async function handleOciswapStrategy(
     manifest: string,
