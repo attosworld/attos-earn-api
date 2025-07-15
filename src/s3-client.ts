@@ -2,11 +2,13 @@ import {
     S3Client,
     PutObjectCommand,
     GetObjectCommand,
+    HeadObjectCommand,
 } from '@aws-sdk/client-s3'
 
 // Initialize S3 client
 const s3Client = new S3Client({
-    region: process.env.AWS_REGION || 'us-east-1',
+    region: process.env.AWS_REGION,
+    endpoint: process.env.AWS_ENDPOINT_URL_S3,
     credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
@@ -14,7 +16,7 @@ const s3Client = new S3Client({
 })
 
 // Bucket name from environment variable
-const BUCKET_NAME = process.env.S3_BUCKET_NAME || 'attos-earn-news-cache'
+const BUCKET_NAME = process.env.BUCKET_NAME
 
 // S3 operations
 export async function uploadToS3(key: string, data: string): Promise<void> {
@@ -46,12 +48,31 @@ export async function getFromS3(key: string): Promise<string | null> {
             return await response.Body.transformToString()
         }
         return null
-    } catch (error: any) {
+    } catch (error) {
         // If the object doesn't exist, return null instead of throwing
-        if (error.name === 'NoSuchKey') {
+        if ((error as { name: string }).name === 'NoSuchKey') {
             return null
         }
         console.error(`Error getting from S3: ${key}`, error)
+        throw error
+    }
+}
+
+export async function doesKeyExistInS3(key: string): Promise<boolean> {
+    try {
+        const command = new HeadObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+        })
+
+        const response = await s3Client.send(command)
+        console.log(response.ContentLength)
+        return (response?.ContentLength || 0) > 2
+    } catch (error) {
+        if ((error as { name: string }).name === 'NotFound') {
+            return false
+        }
+        console.error(`Error checking key existence in S3: ${key}`, error)
         throw error
     }
 }

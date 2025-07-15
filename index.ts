@@ -26,6 +26,7 @@ import { getTokenNews, updateNewsCache } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
+import { doesKeyExistInS3, getFromS3, uploadToS3 } from './src/s3-client'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -567,11 +568,15 @@ Bun.serve({
         if (url.pathname === '/pools/performance' && req.method === 'GET') {
             const baseToken = url.searchParams.get('base_token')
             const type = url.searchParams.get('type') as 'base' | 'quote' | null
+            const component = url.searchParams.get('component')
 
-            if (!baseToken || !type) {
+            if (!baseToken || !type || !component) {
                 return new Response(
                     JSON.stringify({
-                        error_codes: ['base_token_and_type_required'],
+                        error_codes: [
+                            'base_token, type_required',
+                            'component_required',
+                        ],
                     }),
                     {
                         headers: {
@@ -582,10 +587,71 @@ Bun.serve({
                 )
             }
 
+            const lpPerformance = await getFromS3(
+                `lp-performance/${baseToken}-${type}-${component}.json`
+            )
+
+            if (!lpPerformance) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['performance_data_not_found'],
+                    }),
+                    {
+                        status: 404,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(lpPerformance, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (
+            url.pathname === '/pools/performance/populate' &&
+            req.method === 'GET'
+        ) {
+            const baseToken = url.searchParams.get('base_token')
+            const type = url.searchParams.get('type') as 'base' | 'quote' | null
+            const component = url.searchParams.get('component')
+
+            if (!baseToken || !type || !component) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: [
+                            'base_token, type_required',
+                            'component_required',
+                        ],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            const body = await getLpPerformance(baseToken, type, component)
+
+            if (body) {
+                await uploadToS3(
+                    `lp-performance/${baseToken}-${type}-${component}.json`,
+                    JSON.stringify(body)
+                )
+            }
+
             return new Response(
-                JSON.stringify(
-                    await getLpPerformance(baseToken, type, '45653')
-                ),
+                JSON.stringify({
+                    message: 'Performance data uploaded successfully',
+                }),
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -858,6 +924,59 @@ Bun.serve({
     },
 })
 
+async function createAndStoreLpPerformance(date?: Date) {
+    const dfpPools = (POOLS_CACHE || [])
+        .filter((p) => p.type === 'defiplaza')
+        .map((p) => [
+            {
+                base_token: p.left_token,
+                type: 'base',
+                component: p.component,
+            },
+            {
+                base_token: p.left_token,
+                type: 'quote',
+                component: p.component,
+            },
+        ])
+        .flat()
+
+    const ociswapPools = (POOLS_CACHE || [])
+        .filter((p) => p.type === 'ociswap' && p.sub_type !== 'precision')
+        .map((p) => ({
+            base_token: p.base,
+            type: p.type,
+            component: p.component,
+        }))
+
+    const pools = [...ociswapPools, ...dfpPools] as {
+        base_token: string
+        type: 'ociswap' | 'base' | 'quote'
+        component: string
+    }[]
+
+    console.log('getting performance for all pools', pools.length)
+    let index = 0
+    for (const pool of pools) {
+        const key = `lp-performance/${pool.base_token}-${pool.type}-${pool.component}.json`
+
+        const performance = await getLpPerformance(
+            pool.base_token,
+            pool.type,
+            pool.component,
+            date
+        )
+
+        if (performance) {
+            console.log('got performance ', pool.component)
+            await uploadToS3(key, JSON.stringify(performance))
+            index += 1
+            console.log('uploaded 90 day performance ', index)
+        }
+    }
+    console.log('finished getting performance for all pools')
+}
+
 console.log(`Server running on http://localhost:${port}/`)
 
 if (process.env.CACHE_DIR) {
@@ -872,6 +991,14 @@ await Promise.all([
     updateStrategiesV2Cache(),
     updateNewsCache(),
 ])
+
+// await Promise.all([
+//     createAndStoreLpPerformance(
+//         new Date(new Date().getTime() - 24 * 60 * 60 * 1000) // 24 hours ago
+//     ),
+// ])
+
+// await createAndStoreLpPerformance()
 
 // Update pools cache every 10 minutes using cron
 // "*/10 * * * *" means "every 10 minutes"
@@ -892,6 +1019,12 @@ cron.schedule('*/30 * * * *', () => {
     updatePoolsVolumeCache().then(() => {
         console.log('finished updating volume cache (sheduled task)')
     })
+})
+
+// update news cache every 24 hours
+cron.schedule('0 0 * * *', () => {
+    const last24HoursAgo = new Date(new Date().getTime() - 24 * 60 * 60 * 1000)
+    createAndStoreLpPerformance(last24HoursAgo)
 })
 
 // update news cache every 24 hours

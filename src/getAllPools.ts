@@ -19,6 +19,7 @@ export interface Pool {
     sub_type: 'double' | 'single' | 'precision' | 'flex' | 'basic'
     component: string
     current_price?: string
+    lp_token?: string
     tvl: number
     bonus_24h: number
     bonus_7d: number
@@ -81,6 +82,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             type: 'ociswap',
             pool_type: 'double',
             current_price: o.x.price.xrd.now,
+            lp_token: o.lp_token_address,
             sub_type: o.pool_type,
             xRatio: new Decimal(o.x.liquidity.token.now).div(
                 o.y.liquidity.token.now
