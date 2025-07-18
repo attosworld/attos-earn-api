@@ -1,4 +1,12 @@
 import Decimal from 'decimal.js'
+import { sleep } from 'bun'
+import type {
+    ProgrammaticScryptoSborValue,
+    StateEntityDetailsResponseComponentDetails,
+} from '@radixdlt/babylon-gateway-api-sdk'
+import s from '@calamari-radix/sbor-ez-mode'
+import type { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
+import { doesKeyExistInS3, getFromS3, uploadToS3 } from './s3-client'
 
 /**
  * Converts a price to its corresponding tick index using Decimal.js for precision
@@ -286,4 +294,465 @@ Address("${account}")
 "deposit_batch"
 Expression("ENTIRE_WORKTOP")
 ;`
+}
+
+const TICK_BASE_SQRT = new Decimal('1.000049998750062496094023416993798697')
+
+const schema = s.struct({
+    price_sqrt: s.decimal(),
+    active_tick: s.option(s.number()),
+    lp_manager: s.address(),
+})
+
+const nftSchema = s.struct({
+    liquidity: s.decimal(),
+    left_bound: s.number(),
+    right_bound: s.number(),
+})
+
+export function removableAmounts(
+    liquidity: Decimal,
+    priceSqrt: Decimal,
+    priceLeftBoundSqrt: Decimal,
+    priceRightBoundSqrt: Decimal,
+    xDivisibility: number,
+    yDivisibility: number
+): {
+    left_bound: number
+    right_bound: number
+    x_amount: Decimal
+    y_amount: Decimal
+} {
+    // Case 1: All liquidity is withdrawn as token x.
+    if (priceSqrt.lte(priceLeftBoundSqrt)) {
+        const xAmount = Decimal.max(
+            liquidity
+                .div(priceLeftBoundSqrt)
+                .sub(
+                    liquidity.div(priceRightBoundSqrt).add(new Decimal('1e-18'))
+                ),
+            new Decimal(0)
+        )
+
+        return {
+            left_bound: priceLeftBoundSqrt
+                .pow(2)
+                .toDecimalPlaces(18)
+                .toNumber(),
+            right_bound: priceRightBoundSqrt
+                .pow(2)
+                .toDecimalPlaces(18)
+                .toNumber(),
+            x_amount: xAmount.toDecimalPlaces(
+                xDivisibility,
+                Decimal.ROUND_FLOOR
+            ),
+            y_amount: new Decimal(0),
+        }
+    }
+
+    // Case 2: All liquidity is withdrawn as token y.
+    if (priceSqrt.gte(priceRightBoundSqrt)) {
+        const yAmount = liquidity.mul(
+            priceRightBoundSqrt.sub(priceLeftBoundSqrt)
+        )
+        return {
+            left_bound: priceLeftBoundSqrt
+                .pow(2)
+                .toDecimalPlaces(18)
+                .toNumber(),
+            right_bound: priceRightBoundSqrt
+                .pow(2)
+                .toDecimalPlaces(18)
+                .toNumber(),
+            x_amount: new Decimal(0),
+            y_amount: yAmount.toDecimalPlaces(
+                yDivisibility,
+                Decimal.ROUND_FLOOR
+            ),
+        }
+    }
+
+    // Case 3: Liquidity is withdrawn as both x and y.
+    const xAmount = Decimal.max(
+        liquidity
+            .div(priceSqrt)
+            .sub(
+                liquidity
+                    .div(priceRightBoundSqrt)
+                    .add(Decimal.min(1e-18, new Decimal('1e-18')))
+            ),
+        new Decimal(0)
+    )
+    const yAmount = liquidity.mul(priceSqrt.sub(priceLeftBoundSqrt))
+
+    return {
+        left_bound: priceLeftBoundSqrt.pow(2).toDecimalPlaces(9).toNumber(),
+        right_bound: priceRightBoundSqrt.pow(2).toDecimalPlaces(9).toNumber(),
+        x_amount: xAmount,
+        y_amount: yAmount,
+    }
+}
+
+export function tickToPriceSqrt(tick: Decimal) {
+    return TICK_BASE_SQRT.pow(tick)
+}
+
+export async function getAllNftIds(
+    gatewayApiEzMode: GatewayEzMode,
+    resourceAddress: string,
+    allNfts: string[] = [],
+    nextCursor: string | undefined = undefined,
+    state: number
+) {
+    const nfts = await gatewayApiEzMode.gateway.state.getNonFungibleIds(
+        resourceAddress,
+        { state_version: state },
+        nextCursor
+    )
+
+    if (nfts.next_cursor) {
+        return await getAllNftIds(
+            gatewayApiEzMode,
+            resourceAddress,
+            [...allNfts, ...nfts.items],
+            nfts.next_cursor,
+            state
+        )
+    }
+
+    return [...allNfts, ...nfts.items]
+}
+
+export async function getNonFungibleData(
+    gatewayApiEzMode: GatewayEzMode,
+    resourceAddress: string,
+    ids: string[]
+) {
+    const nonFungibleData =
+        await gatewayApiEzMode.gateway.state.getNonFungibleData(
+            resourceAddress,
+            ids
+        )
+
+    return nonFungibleData
+        .filter((nft) => !nft.is_burned)
+        .map((nft) => nftSchema.parse(nft.data!.programmatic_json ?? {}, []))
+}
+
+function getStepSize(min: number, max: number): number {
+    const range = new Decimal(max).sub(min)
+    const numPoints = 60 // Desired number of points
+    return range.dividedBy(numPoints).toDP(9).toNumber()
+}
+
+export async function getHistoricalComponentInfo(
+    gatewayApiEzMode: GatewayEzMode,
+    componentAddress: string,
+    date: Date
+) {
+    return gatewayApiEzMode.gateway.state.innerClient
+        .stateEntityDetails({
+            stateEntityDetailsRequest: {
+                addresses: [componentAddress],
+                at_ledger_state: {
+                    timestamp: date,
+                },
+            },
+        })
+        .then((response) =>
+            schema.parse(
+                (
+                    response.items[0]
+                        .details as StateEntityDetailsResponseComponentDetails
+                ).state as ProgrammaticScryptoSborValue,
+                []
+            )
+        )
+}
+
+export async function getLpPerformanceOverTime(
+    gatewayApiEzMode: GatewayEzMode,
+    componentAddress: string,
+    xAmount: Decimal,
+    yAmount: Decimal,
+    leftBound: number,
+    rightBound: number,
+    startDate: Date,
+    endDate: Date
+) {
+    const dateRangePerDayList = []
+
+    const currentDate = new Date(startDate)
+
+    while (currentDate <= endDate) {
+        dateRangePerDayList.push(new Date(currentDate))
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+    }
+
+    let previousXAmount = xAmount
+    let previousYAmount = yAmount
+    const performanceData = await Promise.all(
+        dateRangePerDayList.map(async (stateVersion, i) => {
+            const componentInfo = await getHistoricalComponentInfo(
+                gatewayApiEzMode,
+                componentAddress,
+                stateVersion
+            )
+            await sleep(100)
+
+            const x = i === 0 ? xAmount : previousXAmount
+            const y = i === 0 ? yAmount : previousYAmount
+
+            const addables = addableAmounts(
+                x,
+                18, // xDivisibility
+                y,
+                18, // yDivisibility
+                new Decimal(componentInfo.price_sqrt),
+                tickToPriceSqrt(new Decimal(leftBound)),
+                tickToPriceSqrt(new Decimal(rightBound))
+            )
+
+            previousXAmount = addables[0]
+            previousYAmount = addables[1]
+
+            return addableAmounts
+        })
+    )
+
+    return performanceData
+}
+
+export async function getLiquidityDistribution(
+    gatewayApiEzMode: GatewayEzMode,
+    componentAddress: string
+) {
+    const precisionPoolState =
+        await gatewayApiEzMode.state.getComponentInfo(componentAddress)
+
+    const state = await gatewayApiEzMode.status.getCurrentStateVersion()
+
+    const componentState = precisionPoolState.state
+        .getWithSchema(schema)
+        ._unsafeUnwrap()
+
+    const priceSqrt = new Decimal(componentState.price_sqrt).pow(2)
+
+    const lpResourceAddress = componentState.lp_manager
+
+    const s3Key = `liquidity-distribution/${lpResourceAddress}.json`
+
+    let cachedData: {
+        liquidity: string
+        left_bound: number
+        right_bound: number
+    }[] = []
+
+    if (await doesKeyExistInS3(s3Key)) {
+        console.log(`Data found in S3 for ${lpResourceAddress}, fetching...`)
+        const data = await getFromS3(s3Key)
+        if (data) {
+            cachedData = JSON.parse(data)
+        }
+
+        const resourceInfo =
+            await gatewayApiEzMode.state.getResourceInfo(lpResourceAddress)
+
+        const totalSupply = +resourceInfo.supplyInfo.totalSupply
+
+        if (cachedData.length !== totalSupply) {
+            console.log(
+                `Data in S3 does not match total supply, fetching again...`
+            )
+            // If not in S3, proceed to fetch and process the data
+            const ids = await getAllNftIds(
+                gatewayApiEzMode,
+                lpResourceAddress,
+                [],
+                undefined,
+                state
+            )
+
+            cachedData = await getNonFungibleData(
+                gatewayApiEzMode,
+                lpResourceAddress,
+                ids
+            )
+
+            await uploadToS3(s3Key, JSON.stringify(cachedData))
+        }
+    } else {
+        // If not in S3, proceed to fetch and process the data
+        const ids = await getAllNftIds(
+            gatewayApiEzMode,
+            lpResourceAddress,
+            [],
+            undefined,
+            state
+        )
+
+        cachedData = await getNonFungibleData(
+            gatewayApiEzMode,
+            lpResourceAddress,
+            ids
+        )
+
+        // Store data in S3
+        await uploadToS3(s3Key, JSON.stringify(cachedData))
+    }
+
+    const liquidityRanges = cachedData
+        .map((nft) =>
+            removableAmounts(
+                new Decimal(nft.liquidity),
+                priceSqrt,
+                tickToPriceSqrt(new Decimal(nft.left_bound)),
+                tickToPriceSqrt(new Decimal(nft.right_bound)),
+                18, // xDivisibility
+                18 // yDivisibility
+            )
+        )
+        .sort((a, b) => a.left_bound - b.left_bound)
+
+    const validLeftBounds = liquidityRanges
+        .map((range) => new Decimal(range.left_bound))
+        .filter((bound) => bound.lt(new Decimal('1e30')))
+
+    const validRightBounds = liquidityRanges
+        .map((range) => new Decimal(range.right_bound))
+        .filter((bound) => bound.lt(new Decimal('1e30')))
+
+    const minLeftBound =
+        validLeftBounds.length > 0
+            ? Decimal.min(...validLeftBounds)
+                  .toDP(9)
+                  .toNumber()
+            : 0.001
+
+    const maxRightBound =
+        validRightBounds.length > 0
+            ? Decimal.max(...validRightBounds)
+                  .toDP(9)
+                  .toNumber()
+            : 1000
+
+    const liquidityPoints: {
+        price: number
+        x_amount: Decimal
+        y_amount: Decimal
+    }[] = []
+
+    // step size should be dynamic based on the range
+    const stepSize = getStepSize(minLeftBound, maxRightBound)
+
+    for (let i = minLeftBound; i <= maxRightBound; i += stepSize) {
+        const priceSqrt = new Decimal(i)
+        let xAmount = new Decimal(0)
+        let yAmount = new Decimal(0)
+
+        liquidityRanges.forEach((range) => {
+            if (
+                priceSqrt.gte(range.left_bound) &&
+                priceSqrt.lte(range.right_bound)
+            ) {
+                console.log(priceSqrt, range)
+                xAmount = xAmount.add(range.x_amount)
+                yAmount = yAmount.add(range.y_amount)
+            }
+        })
+
+        liquidityPoints.push({
+            price: priceSqrt.toNumber(),
+            x_amount: xAmount,
+            y_amount: yAmount,
+        })
+    }
+
+    // insert the current price sqrt into the liquidity points in an index closest to the left bound
+    const closestIndex = liquidityPoints.findIndex(
+        (range) => range.price >= priceSqrt.toNumber()
+    )
+
+    if (closestIndex !== -1) {
+        liquidityPoints[closestIndex] = {
+            price: priceSqrt.toNumber(),
+            x_amount: liquidityPoints[closestIndex].x_amount,
+            y_amount: liquidityPoints[closestIndex].y_amount,
+        }
+    }
+
+    return { liquidityPoints, price: priceSqrt.toNumber() }
+}
+
+export function adjustWithinMargin(
+    amount: Decimal,
+    allowedAmount: Decimal,
+    margin: Decimal
+): Decimal {
+    if (amount.gte(allowedAmount) && amount.minus(allowedAmount).lte(margin)) {
+        return amount
+    }
+    return allowedAmount
+}
+
+export function addableAmounts(
+    xAmount: Decimal,
+    xDivisibility: number,
+    yAmount: Decimal,
+    yDivisibility: number,
+    priceSqrt: Decimal,
+    priceLeftBoundSqrt: Decimal,
+    priceRightBoundSqrt: Decimal
+): [Decimal, Decimal] {
+    const divisibilityUnit = (divisibility: number) =>
+        new Decimal(10).pow(-divisibility)
+    const subtractPrecisionMargin = (amount: Decimal, margin: Decimal) =>
+        Decimal.max(amount.minus(margin), new Decimal(0))
+
+    const xPrecisionMargin = divisibilityUnit(xDivisibility).mul(2)
+    const yPrecisionMargin = divisibilityUnit(yDivisibility).mul(2)
+
+    const xAmountSafe = subtractPrecisionMargin(xAmount, xPrecisionMargin)
+    const yAmountSafe = subtractPrecisionMargin(yAmount, yPrecisionMargin)
+
+    if (priceSqrt.lte(priceLeftBoundSqrt)) {
+        // const xScale = new Decimal(1)
+        //     .div(priceLeftBoundSqrt)
+        //     .plus(new Decimal(1e-18))
+        //     .minus(new Decimal(1).div(priceRightBoundSqrt))
+        // const xLiquidity = xAmountSafe.div(xScale)
+        return [xAmount, new Decimal(0)]
+    }
+
+    if (priceSqrt.gte(priceRightBoundSqrt)) {
+        // const yScale = priceRightBoundSqrt.minus(priceLeftBoundSqrt)
+        // const yLiquidity = yAmountSafe.div(yScale)
+        return [new Decimal(0), yAmount]
+    }
+
+    const xScale = new Decimal(1)
+        .div(priceSqrt)
+        .plus(new Decimal(1e-18))
+        .minus(new Decimal(1).div(priceRightBoundSqrt))
+    const xLiquidity = xAmountSafe.div(xScale)
+
+    const yScale = priceSqrt.minus(priceLeftBoundSqrt)
+    const yLiquidity = yAmountSafe.div(yScale)
+
+    const liquidity = Decimal.min(xLiquidity, yLiquidity)
+
+    const xAmountAllowed = liquidity
+        .mul(xScale)
+        .plus(new Decimal(1e-18))
+        .toDecimalPlaces(xDivisibility, Decimal.ROUND_CEIL)
+    const yAmountAllowed = liquidity
+        .mul(yScale)
+        .plus(new Decimal(1e-18))
+        .toDecimalPlaces(yDivisibility, Decimal.ROUND_CEIL)
+
+    return [
+        adjustWithinMargin(xAmount, xAmountAllowed, xPrecisionMargin),
+        adjustWithinMargin(yAmount, yAmountAllowed, yPrecisionMargin),
+    ]
 }

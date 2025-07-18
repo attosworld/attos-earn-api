@@ -26,7 +26,8 @@ import { getTokenNews, updateNewsCache } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
-import { doesKeyExistInS3, getFromS3, uploadToS3 } from './src/s3-client'
+import { getFromS3, uploadToS3 } from './src/s3-client'
+import { getLiquidityDistribution } from './src/ociswapPrecisionPool'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -652,6 +653,36 @@ Bun.serve({
                 JSON.stringify({
                     message: 'Performance data uploaded successfully',
                 }),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/pools/liquidity' && req.method === 'GET') {
+            const component = url.searchParams.get('component')
+
+            if (!component) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['component_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(
+                JSON.stringify(
+                    await getLiquidityDistribution(gatewayApiEzMode, component)
+                ),
                 {
                     headers: {
                         'Content-Type': 'application/json',

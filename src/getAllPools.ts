@@ -42,6 +42,7 @@ export interface Pool {
     boosted: boolean
     incentivised_lp_docs: string
     volume_per_day?: number[]
+    precision_price?: number
 }
 
 const STABLECOIN_ADDRESSES = new Set([
@@ -81,7 +82,14 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
         return {
             type: 'ociswap',
             pool_type: 'double',
-            current_price: o.x.price.xrd.now,
+            current_price:
+                o.x.token.address === XRD_RESOURCE_ADDRESS
+                    ? o.y.price.xrd.now
+                    : o.x.price.xrd.now,
+            precision_price:
+                o.x.token.address === XRD_RESOURCE_ADDRESS
+                    ? +o.x.price.xrd.now / +o.y.price.xrd.now
+                    : +o.y.price.xrd.now / +o.x.price.xrd.now,
             lp_token: o.lp_token_address,
             sub_type: o.pool_type,
             xRatio: new Decimal(o.x.liquidity.token.now).div(
@@ -305,11 +313,11 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         : []),
                                     ...((d.baseToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.baseToken].tags) ||
+                                        tokens[d.baseToken]?.tags) ||
                                         []),
                                     ...((d.quoteToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.quoteToken].tags) ||
+                                        tokens[d.quoteToken]?.tags) ||
                                         []),
                                 ],
                             },
@@ -365,11 +373,11 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         : []),
                                     ...((d.baseToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.baseToken].tags) ||
+                                        tokens[d.baseToken]?.tags) ||
                                         []),
                                     ...((d.quoteToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.quoteToken].tags) ||
+                                        tokens[d.quoteToken]?.tags) ||
                                         []),
                                 ],
                             } as Pool,
