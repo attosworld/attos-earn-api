@@ -656,7 +656,6 @@ export async function getLiquidityDistribution(
                 priceSqrt.gte(range.left_bound) &&
                 priceSqrt.lte(range.right_bound)
             ) {
-                console.log(priceSqrt, range)
                 xAmount = xAmount.add(range.x_amount)
                 yAmount = yAmount.add(range.y_amount)
             }
