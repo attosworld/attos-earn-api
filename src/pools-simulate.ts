@@ -54,7 +54,7 @@ export async function getLpPerformance(
     let date = new Date()
 
     if (startDate) {
-        date = startDate
+        date = new Date(startDate)
     } else {
         date.setDate(date.getDate() - 90)
         date.setDate(date.getDate() + 1)

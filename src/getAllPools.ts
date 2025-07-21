@@ -23,6 +23,7 @@ export interface Pool {
     tvl: number
     bonus_24h: number
     bonus_7d: number
+    side?: string
     base: string
     quote: string
     volume_7d: number
@@ -62,6 +63,13 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
         getDefiplazaPools(),
         tokensRequest(),
     ])
+
+    console.log(
+        'got info',
+        ociPools.length,
+        dfpPools.data.length,
+        Object.entries(tokens).length
+    )
 
     TOKEN_PRICE_CACHE = tokens
 

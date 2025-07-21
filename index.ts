@@ -28,6 +28,7 @@ import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
 import { getFromS3, uploadToS3 } from './src/s3-client'
 import { getLiquidityDistribution } from './src/ociswapPrecisionPool'
+import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -622,13 +623,15 @@ Bun.serve({
             const baseToken = url.searchParams.get('base_token')
             const type = url.searchParams.get('type') as 'base' | 'quote' | null
             const component = url.searchParams.get('component')
+            const date = url.searchParams.get('date')
 
-            if (!baseToken || !type || !component) {
+            if (!baseToken || !type || !component || !date) {
                 return new Response(
                     JSON.stringify({
                         error_codes: [
                             'base_token, type_required',
                             'component_required',
+                            'date_required',
                         ],
                     }),
                     {
@@ -640,7 +643,12 @@ Bun.serve({
                 )
             }
 
-            const body = await getLpPerformance(baseToken, type, component)
+            const body = await getLpPerformance(
+                baseToken,
+                type,
+                component,
+                new Date(date)
+            )
 
             if (body) {
                 await uploadToS3(
@@ -958,24 +966,17 @@ Bun.serve({
 async function createAndStoreLpPerformance(date?: Date) {
     const dfpPools = (POOLS_CACHE || [])
         .filter((p) => p.type === 'defiplaza')
-        .map((p) => [
-            {
-                base_token: p.left_token,
-                type: 'base',
-                component: p.component,
-            },
-            {
-                base_token: p.left_token,
-                type: 'quote',
-                component: p.component,
-            },
-        ])
+        .map((p) => ({
+            base_token: p.left_token,
+            type: p.side,
+            component: p.component,
+        }))
         .flat()
 
     const ociswapPools = (POOLS_CACHE || [])
         .filter((p) => p.type === 'ociswap' && p.sub_type !== 'precision')
         .map((p) => ({
-            base_token: p.base,
+            base_token: p.base === XRD_RESOURCE_ADDRESS ? p.quote : p.base,
             type: p.type,
             component: p.component,
         }))
@@ -1003,6 +1004,8 @@ async function createAndStoreLpPerformance(date?: Date) {
             await uploadToS3(key, JSON.stringify(performance))
             index += 1
             console.log('uploaded 90 day performance ', index)
+        } else {
+            console.log('failed to get performance ', pool.component)
         }
     }
     console.log('finished getting performance for all pools')
@@ -1029,9 +1032,7 @@ await Promise.all([
 //     ),
 // ])
 
-// await createAndStoreLpPerformance(
-//     new Date(new Date().getTime() - 24 * 60 * 60 * 1000 * 8)
-// )
+// await createAndStoreLpPerformance(new Date('2025-07-10'))
 
 // Update pools cache every 10 minutes using cron
 // "*/10 * * * *" means "every 10 minutes"
