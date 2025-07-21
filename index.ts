@@ -1029,7 +1029,9 @@ await Promise.all([
 //     ),
 // ])
 
-// await createAndStoreLpPerformance()
+// await createAndStoreLpPerformance(
+//     new Date(new Date().getTime() - 24 * 60 * 60 * 1000 * 8)
+// )
 
 // Update pools cache every 10 minutes using cron
 // "*/10 * * * *" means "every 10 minutes"
@@ -1053,13 +1055,15 @@ cron.schedule('*/30 * * * *', () => {
 })
 
 // update news cache every 24 hours
-cron.schedule('0 0 * * *', () => {
-    const last24HoursAgo = new Date(new Date().getTime() - 24 * 60 * 60 * 1000)
+cron.schedule('0 */23 * * *', () => {
+    const last24HoursAgo = new Date(
+        new Date().getTime() - 24 * 60 * 60 * 1000 * 8
+    )
     createAndStoreLpPerformance(last24HoursAgo)
 })
 
 // update news cache every 24 hours
-cron.schedule('0 0 * * *', () => {
+cron.schedule('0 */24 * * *', () => {
     updateNewsCache()
 })
 
