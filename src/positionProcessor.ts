@@ -1098,6 +1098,10 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
             accountAddress: address,
         }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
 
+        if (!swapToXrdManifest) {
+            return
+        }
+
         const swapManifest = swapToXrdManifest.manifest.split(';')
 
         const depositCall = swapManifest?.findIndex((m) =>
@@ -1256,12 +1260,20 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
             )
         ) as { resource_changes: ResourceChange[] } | undefined
 
+        if (!value) {
+            return
+        }
+
         const swapToXrdManifest = await astrolescentRequest({
             inputToken: strategyPool.resource_address,
             outputToken: XRD_RESOURCE_ADDRESS,
             amount: value?.resource_changes[0].amount ?? '0',
             accountAddress: address,
         }).then((res) => res.json() as Promise<AstrolescentSwapResponse>)
+
+        if (!swapToXrdManifest) {
+            return
+        }
 
         const swapManifest = swapToXrdManifest.manifest.split(';')
 

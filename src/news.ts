@@ -89,6 +89,8 @@ export async function updateNewsCache() {
                     (await getTelegramSocial(tokenAddress))
             )
 
+            console.log('news', news)
+
             // Write news to file
             writeNewsToFile(
                 tokenAddress,

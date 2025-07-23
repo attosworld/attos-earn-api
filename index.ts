@@ -22,7 +22,7 @@ import {
 } from './src/rola'
 import { validateDiscordUserToken } from './src/discord-api'
 import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
-import { getTokenNews, updateNewsCache } from './src/news'
+import { getTokenNews } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
@@ -1023,7 +1023,7 @@ console.log('Finished volume pools cache')
 await Promise.all([
     updatePoolsCache(BRIDGED_TOKENS),
     updateStrategiesV2Cache(),
-    updateNewsCache(),
+    // updateNewsCache(),
 ])
 
 // await Promise.all([
@@ -1063,10 +1063,10 @@ cron.schedule('0 */23 * * *', () => {
     createAndStoreLpPerformance(last24HoursAgo)
 })
 
-// update news cache every 24 hours
-cron.schedule('0 */24 * * *', () => {
-    updateNewsCache()
-})
+// // update news cache every 24 hours
+// cron.schedule('0 */24 * * *', () => {
+//     updateNewsCache()
+// })
 
 // Update volume cache every 30 minutes using cron
 // "*/15 * * * *" means "every 30 minutes"

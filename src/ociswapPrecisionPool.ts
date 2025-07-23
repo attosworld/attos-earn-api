@@ -7,6 +7,10 @@ import type {
 import s from '@calamari-radix/sbor-ez-mode'
 import type { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
 import { doesKeyExistInS3, getFromS3, uploadToS3 } from './s3-client'
+import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
+
+const MAX_TICK = 887272
+const MIN_TICK = -MAX_TICK
 
 /**
  * Converts a price to its corresponding tick index using Decimal.js for precision
@@ -387,8 +391,92 @@ export function removableAmounts(
     const yAmount = liquidity.mul(priceSqrt.sub(priceLeftBoundSqrt))
 
     return {
-        left_bound: priceLeftBoundSqrt.pow(2).toDecimalPlaces(9).toNumber(),
-        right_bound: priceRightBoundSqrt.pow(2).toDecimalPlaces(9).toNumber(),
+        left_bound: priceLeftBoundSqrt.toDecimalPlaces(18).toNumber(),
+        right_bound: priceRightBoundSqrt.toDecimalPlaces(18).toNumber(),
+        x_amount: xAmount,
+        y_amount: yAmount,
+    }
+}
+
+const ATTO = new Decimal('1e-18')
+
+function removableAmountsV2(
+    liquidity: Decimal,
+    priceSqrt: Decimal,
+    priceLeftBoundSqrt: Decimal,
+    priceRightBoundSqrt: Decimal,
+    xDivisibility: number,
+    yDivisibility: number
+): {
+    left_bound: number
+    right_bound: number
+    x_amount: Decimal
+    y_amount: Decimal
+} {
+    // When the current price is below the lower bound, all liquidity can be withdrawn as token x.
+    if (priceSqrt.lessThanOrEqualTo(priceLeftBoundSqrt)) {
+        const xAmount = Decimal.max(
+            liquidity
+                .div(priceLeftBoundSqrt)
+                .minus(liquidity.div(priceRightBoundSqrt).plus(ATTO)),
+            new Decimal(0)
+        )
+        // return [
+        //     xAmount.toDecimalPlaces(xDivisibility, Decimal.ROUND_FLOOR),
+        //     new Decimal(0),
+        // ]
+
+        return {
+            left_bound: priceLeftBoundSqrt
+                .toDecimalPlaces(xDivisibility)
+                .toNumber(),
+            right_bound: priceRightBoundSqrt
+                .toDecimalPlaces(yDivisibility)
+                .toNumber(),
+            x_amount: xAmount,
+            y_amount: new Decimal(0),
+        }
+    }
+
+    // When the current price is above the upper bound, all liquidity can be withdrawn as token y.
+    if (priceSqrt.greaterThanOrEqualTo(priceRightBoundSqrt)) {
+        const yAmount = liquidity.times(
+            priceRightBoundSqrt.minus(priceLeftBoundSqrt)
+        )
+        // return [
+        //     new Decimal(0),
+        //     yAmount.toDecimalPlaces(yDivisibility, Decimal.ROUND_FLOOR),
+        // ]
+
+        return {
+            left_bound: priceLeftBoundSqrt
+                .toDecimalPlaces(xDivisibility)
+                .toNumber(),
+            right_bound: priceRightBoundSqrt
+                .toDecimalPlaces(yDivisibility)
+                .toNumber(),
+            x_amount: new Decimal(0),
+            y_amount: yAmount,
+        }
+    }
+
+    // When the current price is within the bounds, calculate the withdrawable amounts for both tokens.
+    const xAmount = Decimal.max(
+        liquidity
+            .div(priceSqrt)
+            .minus(liquidity.div(priceRightBoundSqrt).plus(ATTO)),
+        new Decimal(0)
+    )
+    const yAmount = liquidity.times(priceSqrt.minus(priceLeftBoundSqrt))
+
+    //     return [
+    //         xAmount.toDecimalPlaces(xDivisibility, Decimal.ROUND_FLOOR),
+    //         yAmount.toDecimalPlaces(yDivisibility, Decimal.ROUND_FLOOR),
+    //     ]
+
+    return {
+        left_bound: priceLeftBoundSqrt.toDecimalPlaces(18).toNumber(),
+        right_bound: priceRightBoundSqrt.toDecimalPlaces(18).toNumber(),
         x_amount: xAmount,
         y_amount: yAmount,
     }
@@ -442,7 +530,7 @@ export async function getNonFungibleData(
 
 function getStepSize(min: number, max: number): number {
     const range = new Decimal(max).sub(min)
-    const numPoints = 60 // Desired number of points
+    const numPoints = 100 // Desired number of points
     return range.dividedBy(numPoints).toDP(9).toNumber()
 }
 
@@ -531,6 +619,12 @@ export async function getLiquidityDistribution(
     const precisionPoolState =
         await gatewayApiEzMode.state.getComponentInfo(componentAddress)
 
+    const pairs =
+        precisionPoolState.metadata.metadataExtractor.getMetadataValuesBatch({
+            x_address: 'GlobalAddress',
+            y_address: 'GlobalAddress',
+        })
+
     const state = await gatewayApiEzMode.status.getCurrentStateVersion()
 
     const componentState = precisionPoolState.state
@@ -607,35 +701,38 @@ export async function getLiquidityDistribution(
             removableAmounts(
                 new Decimal(nft.liquidity),
                 priceSqrt,
-                tickToPriceSqrt(new Decimal(nft.left_bound)),
-                tickToPriceSqrt(new Decimal(nft.right_bound)),
+                tickToPrice(new Decimal(nft.left_bound)),
+                tickToPrice(new Decimal(nft.right_bound)),
                 18, // xDivisibility
                 18 // yDivisibility
             )
         )
         .sort((a, b) => a.left_bound - b.left_bound)
 
-    const validLeftBounds = liquidityRanges
-        .map((range) => new Decimal(range.left_bound))
-        .filter((bound) => bound.lt(new Decimal('1e30')))
+    //     const validLeftBounds = liquidityRanges
+    //         .map((range) => new Decimal(range.left_bound))
+    //         .filter((bound) => bound.lt(new Decimal('1e30')))
 
-    const validRightBounds = liquidityRanges
-        .map((range) => new Decimal(range.right_bound))
-        .filter((bound) => bound.lt(new Decimal('1e30')))
+    //     const validRightBounds = liquidityRanges
+    //         .map((range) => new Decimal(range.right_bound))
+    //         .filter((bound) => bound.lt(new Decimal('1e30')))
 
-    const minLeftBound =
-        validLeftBounds.length > 0
-            ? Decimal.min(...validLeftBounds)
-                  .toDP(9)
-                  .toNumber()
-            : 0.001
+    const priceSqrtMinusNinetyPercent = priceSqrt.minus(
+        priceSqrt.div(100).times(90)
+    )
+    const priceSqrtPlusNineHundredPercent = priceSqrt.plus(
+        priceSqrt.div(100).times(900)
+    )
 
-    const maxRightBound =
-        validRightBounds.length > 0
-            ? Decimal.max(...validRightBounds)
-                  .toDP(9)
-                  .toNumber()
-            : 1000
+    const { left_bound: minLeftBound, right_bound: maxRightBound } =
+        removableAmounts(
+            new Decimal(0),
+            priceSqrt,
+            priceSqrtMinusNinetyPercent,
+            priceSqrtPlusNineHundredPercent,
+            18, // xDivisibility
+            18
+        )
 
     const liquidityPoints: {
         price: number
@@ -662,26 +759,47 @@ export async function getLiquidityDistribution(
         })
 
         liquidityPoints.push({
-            price: priceSqrt.toNumber(),
+            price: new Decimal(1).dividedBy(priceSqrt).toNumber(),
             x_amount: xAmount,
             y_amount: yAmount,
         })
     }
 
-    // insert the current price sqrt into the liquidity points in an index closest to the left bound
+    const normalisedPrice = new Decimal(1).dividedBy(priceSqrt)
+
+    //     // insert the current price sqrt into the liquidity points in an index closest to the left bound
     const closestIndex = liquidityPoints.findIndex(
-        (range) => range.price >= priceSqrt.toNumber()
+        (range) => range.price >= normalisedPrice.toNumber()
     )
+
+    const priceNum = normalisedPrice.toNumber()
 
     if (closestIndex !== -1) {
         liquidityPoints[closestIndex] = {
-            price: priceSqrt.toNumber(),
+            price: priceNum,
             x_amount: liquidityPoints[closestIndex].x_amount,
             y_amount: liquidityPoints[closestIndex].y_amount,
         }
     }
 
-    return { liquidityPoints, price: priceSqrt.toNumber() }
+    return {
+        liquidityPoints: liquidityPoints
+            .map((lp) => {
+                return {
+                    ...lp,
+                    price:
+                        pairs.y_address === XRD_RESOURCE_ADDRESS
+                            ? new Decimal(1).dividedBy(lp.price).toNumber()
+                            : lp.price,
+                }
+            })
+            .filter((points) => !points.price.toString().includes('e-'))
+            .sort((a, b) => a.price - b.price),
+        price:
+            pairs.x_address === XRD_RESOURCE_ADDRESS
+                ? priceNum
+                : priceSqrt.toNumber(),
+    }
 }
 
 export function adjustWithinMargin(
