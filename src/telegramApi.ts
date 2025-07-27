@@ -66,6 +66,7 @@ export async function getChannelMessages(
             text: msg.message,
             media: msg.media,
             replyTo: msg.replyTo?.replyToMsgId,
+            url: `https://t.me/${channelUsername}/${msg.id}`,
             fromId:
                 (msg.fromId as { userId: Api.long })?.userId.toJSNumber() || 0,
             peerId:

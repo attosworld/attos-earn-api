@@ -415,6 +415,10 @@ Bun.serve({
 
         if (url.pathname === '/portfolio' && req.method === 'GET') {
             const address = url.searchParams.get('address')
+            const type = url.searchParams.get('type') as
+                | 'lp'
+                | 'strategy'
+                | undefined
 
             if (!address || !address.startsWith('account_rdx')) {
                 return new Response(
@@ -429,7 +433,7 @@ Bun.serve({
             }
 
             const portfolioPnL: PoolPortfolioItem[] =
-                await getAccountLPPortfolio(address)
+                await getAccountLPPortfolio(address, type)
 
             return new Response(JSON.stringify(portfolioPnL), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },

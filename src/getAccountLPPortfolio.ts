@@ -1,15 +1,24 @@
 import type { NftInfo } from '@calamari-radix/gateway-ez-mode/dist/types'
 import { gatewayApiEzMode } from '../'
-import { getAllAddLiquidityTxs } from './getAllAddLiquidityTxs'
-import { tokensRequest } from './astrolescent'
-import { getRootFinancePoolState } from './rootFinance'
+import {
+    getAllAddLiquidityTxs,
+    type EnhancedTransactionInfo,
+} from './getAllAddLiquidityTxs'
+import { tokensRequest, type TokenInfo } from './astrolescent'
+import {
+    getRootFinancePoolState,
+    type RootFinancePoolStateResponse,
+} from './rootFinance'
 import {
     processLPPositions,
     processStrategyPositions,
     type PoolPortfolioItem,
 } from './positionProcessor'
 
-export async function getAccountLPPortfolio(address: string) {
+export async function getAccountLPPortfolio(
+    address: string,
+    type?: 'lp' | 'strategy'
+) {
     const [fungibleLps, nftLps, tokenPrices, liquidityPoolTxs] =
         await Promise.all([
             gatewayApiEzMode.state.getComponentFungibleBalances(address),
@@ -90,15 +99,17 @@ export async function getAccountLPPortfolio(address: string) {
     ])
 
     const portfolioPnL: PoolPortfolioItem[] = (
-        await Promise.all([
-            ...processLPPositions(lps, liquidityPoolTxs, address, tokenPrices),
-            ...processStrategyPositions(
+        await Promise.all(
+            getPortfolioItems(
+                address,
+                type,
+                lps,
+                liquidityPoolTxs,
                 strategyTxs,
                 rootFinancePoolState,
-                tokenPrices,
-                address
-            ),
-        ])
+                tokenPrices
+            )
+        )
     ).filter(Boolean) as PoolPortfolioItem[]
 
     return portfolioPnL.filter(
@@ -109,4 +120,47 @@ export async function getAccountLPPortfolio(address: string) {
                     +pool.invested != 0 &&
                     +pool.currentValue != 0))
     )
+}
+
+export function getPortfolioItems(
+    address: string,
+    type: 'lp' | 'strategy' | undefined,
+    lps: Record<
+        string,
+        {
+            type: 'defiplaza' | 'ociswap' | 'ociswap_v2'
+            balance?: string
+            nftInfo?: {
+                nfts: NftInfo[]
+                component: string
+                left_token: string
+                right_token: string
+            }
+        }
+    >,
+    liquidityPoolTxs: EnhancedTransactionInfo[],
+    strategyTxs: EnhancedTransactionInfo[],
+    rootFinancePoolState: RootFinancePoolStateResponse | null,
+    tokenPrices: Record<string, TokenInfo>
+) {
+    if (type === 'lp') {
+        return processLPPositions(lps, liquidityPoolTxs, address, tokenPrices)
+    } else if (type === 'strategy') {
+        return processStrategyPositions(
+            strategyTxs,
+            rootFinancePoolState,
+            tokenPrices,
+            address
+        )
+    } else {
+        return [
+            ...processLPPositions(lps, liquidityPoolTxs, address, tokenPrices),
+            ...processStrategyPositions(
+                strategyTxs,
+                rootFinancePoolState,
+                tokenPrices,
+                address
+            ),
+        ]
+    }
 }

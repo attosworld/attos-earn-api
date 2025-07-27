@@ -32,32 +32,43 @@ export async function handleLendingStrategy({
             s.provider === provider
     ) as LendingStrategy | undefined
 
-    const swapResponse = await astrolescentRequest({
-        accountAddress,
-        inputToken: XRD_RESOURCE_ADDRESS,
-        outputToken: resourceAddress,
-        amount,
-    })
-        .then((res) => res.json() as Promise<AstrolescentSwapResponse>)
-        .catch(() => undefined)
+    let buyManifestWithoutDeposit: string[] | undefined
 
-    const buyManifestWithoutDeposit = swapResponse?.manifest?.split(';')
+    if (resourceAddress !== XRD_RESOURCE_ADDRESS) {
+        const swapResponse = await astrolescentRequest({
+            accountAddress,
+            inputToken: XRD_RESOURCE_ADDRESS,
+            outputToken: resourceAddress,
+            amount,
+        })
+            .then((res) => res.json() as Promise<AstrolescentSwapResponse>)
+            .catch(() => undefined)
 
-    if (!buyManifestWithoutDeposit) {
-        return
+        buyManifestWithoutDeposit = swapResponse?.manifest?.split(';')
+
+        if (!buyManifestWithoutDeposit) {
+            return
+        }
+
+        const depositCall = buyManifestWithoutDeposit?.findIndex((m) =>
+            m.includes('deposit_batch')
+        )
+
+        if (!depositCall) {
+            return
+        }
+
+        buyManifestWithoutDeposit = buyManifestWithoutDeposit.splice(
+            depositCall,
+            1
+        )
+
+        if (!swapResponse) {
+            return
+        }
     }
 
-    const depositCall = buyManifestWithoutDeposit?.findIndex((m) =>
-        m.includes('deposit_batch')
-    )
-
-    if (!depositCall) {
-        return
-    }
-
-    buyManifestWithoutDeposit.splice(depositCall, 1)
-
-    if (!strategy || !swapResponse) {
+    if (!strategy) {
         return
     }
 
@@ -75,7 +86,7 @@ export async function handleLendingStrategy({
                     `
                     : `
                     CALL_METHOD Address("${ATTOS_ROYALTY_COMPONENT}") "${CHARGE_ROYALTY_METHOD}";
-                    ${buyManifestWithoutDeposit.join(';')}${WeftClient.getLendManifest(
+                    ${buyManifestWithoutDeposit?.join(';')}${WeftClient.getLendManifest(
                         {
                             accountAddress,
                             resourceAddress,
@@ -99,7 +110,7 @@ export async function handleLendingStrategy({
                     `
                     : `
                     CALL_METHOD Address("${ATTOS_ROYALTY_COMPONENT}") "${CHARGE_ROYALTY_METHOD}";
-                    ${buyManifestWithoutDeposit.join(';')}${getLendManifest({
+                    ${buyManifestWithoutDeposit?.join(';')}${getLendManifest({
                         accountAddress,
                         resourceAddress,
                     })}`
