@@ -248,3 +248,22 @@ export const TOKEN_NEWS_CACHE: Record<string, string> = {
     resource_rdx1tk4y4ct50fzgyjygm7j3y6r3cw5rgsatyfnwdz64yp5t388v0atw8w:
         'DanCoinXRD',
 }
+
+// ;(async () => {
+//     console.log('Loading interactive example...')
+//     const client = new TelegramClient(new StringSession(''), apiId, apiHash, {
+//         connectionRetries: 1,
+//         systemLangCode: 'en',
+//         deviceModel: 'Desktop',
+//         systemVersion: 'Linux',
+//     })
+//     await client.start({
+//         phoneNumber: async () => '7456310558',
+//         password: async () => '',
+//         phoneCode: async () => '+44',
+//         onError: (err) => console.log(err),
+//     })
+//     console.log('You should now be connected.')
+//     console.log(client.session.save()) // Save this string to avoid logging in again
+//     await client.sendMessage('me', { message: 'Hello!' })
+// })()

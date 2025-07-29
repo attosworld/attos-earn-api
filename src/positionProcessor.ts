@@ -36,6 +36,7 @@ import {
     getOciswapSwapPreview,
     getOciswapTokenInfo,
     removeOciswapLiquidity,
+    removeOciswapPrecisionLiquidity,
     type OciswapLPInfo,
 } from './ociswap'
 import {
@@ -154,6 +155,7 @@ export function processLPPositions(
 ) {
     return Object.entries(lps).map(async ([lpAddress, lpInfo]) => {
         const underlyingTokens = await getLPInfo(lpAddress, lpInfo)
+
         if (!underlyingTokens) return null
 
         let airdropToken = new Decimal(0)
@@ -228,15 +230,22 @@ export function processLPPositions(
                           isQuote: PAIR_NAME_CACHE[lpAddress]?.type === 'quote',
                           lpAddress,
                           lpAmount: lpInfo.balance || '0',
-                          lpComponent: PAIR_NAME_CACHE[lpAddress].component,
+                          lpComponent: PAIR_NAME_CACHE[lpAddress]?.component,
                           account: address,
                       })
-                    : removeOciswapLiquidity({
-                          lpAddress,
-                          lpAmount: lpInfo.balance || '0',
-                          lpComponent: PAIR_NAME_CACHE[lpAddress].component,
-                          account: address,
-                      }),
+                    : lpInfo.nftInfo?.nfts.length
+                      ? removeOciswapPrecisionLiquidity({
+                            lpAddress,
+                            nftId: lpInfo.nftInfo.nfts[0].id,
+                            lpComponent: PAIR_NAME_CACHE[lpAddress]?.component,
+                            account: address,
+                        })
+                      : removeOciswapLiquidity({
+                            lpAddress,
+                            lpAmount: lpInfo.balance || '0',
+                            lpComponent: PAIR_NAME_CACHE[lpAddress]?.component,
+                            account: address,
+                        }),
         } as PoolPortfolioItem
     })
 }
@@ -805,6 +814,22 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
                 bc.entity_address.startsWith('account_rdx')
         )
 
+        if (
+            txs.find((t) =>
+                t.balance_changes?.fungible_balance_changes.find(
+                    (fb) =>
+                        fb.resource_address === stakeToken?.resource_address &&
+                        new Decimal(fb.balance_change)
+                            .abs()
+                            .equals(
+                                new Decimal(stakeToken.balance_change).abs()
+                            )
+                )
+            )
+        ) {
+            return
+        }
+
         const strategyPool = STRATEGIES_V2_CACHE.find(
             (sp) =>
                 (sp as StakingStrategy).sToken === stakeToken?.resource_address
@@ -911,6 +936,23 @@ ${swapToXrdManifest.manifest}`
                 bc.resource_address !== XRD_RESOURCE_ADDRESS &&
                 bc.entity_address.startsWith('account_rdx')
         )
+
+        if (
+            txs.find((t) =>
+                t.balance_changes?.fungible_balance_changes.find(
+                    (fb) =>
+                        fb.resource_address ===
+                            fluxPoolToken?.resource_address &&
+                        new Decimal(fb.balance_change)
+                            .abs()
+                            .equals(
+                                new Decimal(fluxPoolToken.balance_change).abs()
+                            )
+                )
+            )
+        ) {
+            return
+        }
 
         if (!fluxPoolToken) {
             return
@@ -1041,6 +1083,20 @@ ${swapToXrdManifest.manifest}`
                 bc.resource_address !== XRD_RESOURCE_ADDRESS &&
                 bc.entity_address.startsWith('account_rdx')
         )
+
+        if (
+            txs.find((t) =>
+                t.balance_changes?.fungible_balance_changes.find(
+                    (fb) =>
+                        fb.resource_address === lentToken?.resource_address &&
+                        new Decimal(fb.balance_change)
+                            .abs()
+                            .equals(new Decimal(lentToken.balance_change).abs())
+                )
+            )
+        ) {
+            return
+        }
 
         if (!lentToken) {
             return
