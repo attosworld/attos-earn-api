@@ -11,11 +11,13 @@ import {
     STRATEGIES_V2_CACHE,
 } from '../index'
 import {
+    CLOSE_FLUX_POSITION,
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     FLUX_POSITION,
     OPEN_ADD_STAKE_POSITION,
     OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST,
     OPEN_POSITION_SURGE_LP_STRATEGY_MANIFEST,
+    REMOVE_STAKE_POSITION,
     SWAP_LEND_ROOT,
     SWAP_LEND_WEFT,
     type EnhancedTransactionInfo,
@@ -815,16 +817,21 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
         )
 
         if (
-            txs.find((t) =>
-                t.balance_changes?.fungible_balance_changes.find(
-                    (fb) =>
-                        fb.resource_address === stakeToken?.resource_address &&
-                        new Decimal(fb.balance_change)
-                            .abs()
-                            .equals(
-                                new Decimal(stakeToken.balance_change).abs()
-                            )
-                )
+            txs.find(
+                (t) =>
+                    t.balance_changes?.fungible_balance_changes.find(
+                        (fb) =>
+                            fb.resource_address ===
+                                stakeToken?.resource_address &&
+                            new Decimal(fb.balance_change)
+                                .abs()
+                                .equals(
+                                    new Decimal(stakeToken.balance_change).abs()
+                                )
+                    ) &&
+                    REMOVE_STAKE_POSITION.every((method) =>
+                        tx.manifest_instructions?.includes(method)
+                    )
             )
         ) {
             return
@@ -949,6 +956,9 @@ ${swapToXrdManifest.manifest}`
                                 new Decimal(fluxPoolToken.balance_change).abs()
                             )
                 )
+            ) &&
+            CLOSE_FLUX_POSITION.every((method) =>
+                tx.manifest_instructions?.includes(method)
             )
         ) {
             return

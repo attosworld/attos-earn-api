@@ -52,8 +52,10 @@ export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
 ]
 
 export const OPEN_ADD_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'add_stake']
+export const REMOVE_STAKE_POSITION = ['remove_stake', 'swap']
 export const OPEN_STAKE_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'stake']
 export const FLUX_POSITION = [CHARGE_ROYALTY_METHOD, 'contribute_to_pool']
+export const CLOSE_FLUX_POSITION = ['withdw_from_pool', 'swap']
 export const SWAP_LEND_WEFT = [
     CHARGE_ROYALTY_METHOD,
     'swap',
