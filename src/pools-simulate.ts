@@ -76,6 +76,12 @@ export async function getLpPerformance(
         )) ?? '{}'
     ) as Record<string, number>
 
+    const latestDate = Object.keys(currentData).reduce(
+        (maxDate, currentDate) =>
+            date > new Date(maxDate) ? new Date(currentDate) : maxDate,
+        date
+    )
+
     const lpPoolAddress =
         type === 'ociswap' &&
         ociswapDetails?.sub_type !== 'precision' &&
@@ -90,13 +96,13 @@ export async function getLpPerformance(
                   )
             : undefined
 
-    while (date < now) {
-        const xrd = await fetchOrGetPrice(XRD_RESOURCE_ADDRESS, date)
-        const dateKey = date.toISOString().split('T')[0] // Format as YYYY-MM-DD
+    while (latestDate < now) {
+        const xrd = await fetchOrGetPrice(XRD_RESOURCE_ADDRESS, latestDate)
+        const dateKey = latestDate.toISOString().split('T')[0] // Format as YYYY-MM-DD
 
         if (type == 'base') {
             const lpToken = pair.baseLPToken
-            const isoDateKey = date.toISOString()
+            const isoDateKey = latestDate.toISOString()
 
             // Check if we already have this data in cache
             if (!GLOBAL_LP_CACHE[lpToken]) {
@@ -104,9 +110,9 @@ export async function getLpPerformance(
             }
 
             if (!GLOBAL_LP_CACHE[lpToken][isoDateKey]) {
-                const [supply] = await fetchTotalSupply([lpToken], date)
-                const values = await fetchPoolValue(pair.basePool, date)
-                const state = await fetchPoolStates(pair.component, date)
+                const [supply] = await fetchTotalSupply([lpToken], latestDate)
+                const values = await fetchPoolValue(pair.basePool, latestDate)
+                const state = await fetchPoolStates(pair.component, latestDate)
 
                 GLOBAL_LP_CACHE[lpToken][isoDateKey] = {
                     date: isoDateKey,
@@ -147,7 +153,7 @@ export async function getLpPerformance(
             }
         } else if (type == 'quote') {
             const lpToken = pair.quoteLPToken
-            const isoDateKey = date.toISOString()
+            const isoDateKey = latestDate.toISOString()
 
             // Check if we already have this data in cache
             if (!GLOBAL_LP_CACHE[lpToken]) {
@@ -155,9 +161,9 @@ export async function getLpPerformance(
             }
 
             if (!GLOBAL_LP_CACHE[lpToken][isoDateKey]) {
-                const [supply] = await fetchTotalSupply([lpToken], date)
-                const values = await fetchPoolValue(pair.quotePool, date)
-                const state = await fetchPoolStates(pair.component, date)
+                const [supply] = await fetchTotalSupply([lpToken], latestDate)
+                const values = await fetchPoolValue(pair.quotePool, latestDate)
+                const state = await fetchPoolStates(pair.component, latestDate)
 
                 GLOBAL_LP_CACHE[lpToken][isoDateKey] = {
                     date: isoDateKey,
@@ -197,7 +203,7 @@ export async function getLpPerformance(
                 userValuesByDate[dateKey] = userXrdValue.toNumber()
             }
         } else if (type === 'ociswap') {
-            const isoDateKey = date.toISOString()
+            const isoDateKey = latestDate.toISOString()
 
             if (ociswapDetails?.sub_type !== 'precision') {
                 if (!lpPoolAddress) {
@@ -218,9 +224,12 @@ export async function getLpPerformance(
                 }
 
                 if (!GLOBAL_LP_CACHE[lpToken][isoDateKey]) {
-                    const [supply] = await fetchTotalSupply([lpToken], date)
+                    const [supply] = await fetchTotalSupply(
+                        [lpToken],
+                        latestDate
+                    )
                     const values = lpPoolAddress
-                        ? await fetchPoolValue(lpPoolAddress, date)
+                        ? await fetchPoolValue(lpPoolAddress, latestDate)
                         : {}
 
                     GLOBAL_LP_CACHE[lpToken][isoDateKey] = {
@@ -264,7 +273,7 @@ export async function getLpPerformance(
             }
         }
 
-        date.setDate(date.getDate() + 1)
+        latestDate.setDate(latestDate.getDate() + 1)
         await sleep(200)
     }
 

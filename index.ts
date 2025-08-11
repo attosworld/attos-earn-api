@@ -580,7 +580,8 @@ Bun.serve({
                 return new Response(
                     JSON.stringify({
                         error_codes: [
-                            'base_token, type_required',
+                            'base_token_required',
+                            'type_required',
                             'component_required',
                         ],
                     }),
@@ -633,7 +634,8 @@ Bun.serve({
                 return new Response(
                     JSON.stringify({
                         error_codes: [
-                            'base_token, type_required',
+                            'base_token_required',
+                            'type_required',
                             'component_required',
                             'date_required',
                         ],
@@ -1036,7 +1038,7 @@ await Promise.all([
 //     ),
 // ])
 
-// await createAndStoreLpPerformance(new Date('2025-07-10'))
+// await createAndStoreLpPerformance(new Date('2025-07-13'))
 
 // Update pools cache every 10 minutes using cron
 // "*/10 * * * *" means "every 10 minutes"

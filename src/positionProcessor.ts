@@ -1261,12 +1261,14 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
             ) as ProgrammaticScryptoSborValueMap | undefined
             if (
                 collaterals &&
+                collaterals.entries.length &&
                 collaterals.entries[0].key.kind === 'Reference'
             ) {
                 token = collaterals.entries[0].key.value
             }
             if (
                 collaterals &&
+                collaterals.entries.length &&
                 collaterals.entries[0].value.kind === 'PreciseDecimal'
             ) {
                 tokenAmount = collaterals.entries[0].value.value
