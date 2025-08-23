@@ -13,6 +13,7 @@ import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
+import { getRadixIncentives } from './radixIncentives'
 
 export interface Pool {
     type: string
@@ -58,17 +59,19 @@ const STABLECOIN_ADDRESSES = new Set([
 export let TOKEN_PRICE_CACHE: Record<string, TokenInfo>
 
 export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
-    const [ociPools, dfpPools, tokens] = await Promise.all([
+    const [ociPools, dfpPools, tokens, incentives] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
         tokensRequest(),
+        getRadixIncentives('liquidity'),
     ])
 
     console.log(
         'got info',
         ociPools.length,
         dfpPools.data.length,
-        Object.entries(tokens).length
+        Object.entries(tokens).length,
+        incentives.size
     )
 
     TOKEN_PRICE_CACHE = tokens
@@ -146,6 +149,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                 ...((o.y.token.address !== XRD_RESOURCE_ADDRESS &&
                     tokens[o.y.token.address]?.tags) ||
                     []),
+                ...(incentives.has(o.address) ? ['incentives'] : []),
             ],
         } as Pool
     })
@@ -329,6 +333,9 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         DFP2_RESOURCE_ADDRESS &&
                                         tokens[d.quoteToken]?.tags) ||
                                         []),
+                                    ...(incentives.has(d.address)
+                                        ? ['incentives']
+                                        : []),
                                 ],
                             },
                             {
