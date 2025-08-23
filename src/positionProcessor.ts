@@ -944,6 +944,10 @@ ${swapToXrdManifest.manifest}`
                 bc.entity_address.startsWith('account_rdx')
         )
 
+        if (!fluxPoolToken || !xrdChange) {
+            return
+        }
+
         if (
             txs.find((t) =>
                 t.balance_changes?.fungible_balance_changes.find(
@@ -961,10 +965,6 @@ ${swapToXrdManifest.manifest}`
                 tx.manifest_instructions?.includes(method)
             )
         ) {
-            return
-        }
-
-        if (!fluxPoolToken) {
             return
         }
 
@@ -1021,6 +1021,11 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
                 (rc) => +rc.amount > 0 && rc.resource_address === FUSD
             )
         ) as { resource_changes: ResourceChange[] } | undefined
+
+        if (!value) {
+            return
+        }
+
         const swapToXrdManifest = await astrolescentRequest({
             inputToken: FUSD,
             outputToken: XRD_RESOURCE_ADDRESS,
