@@ -130,7 +130,8 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             left_name: o.x.token.name,
             right_name: o.y.token.name,
             deposit_link: `https://ociswap.com/pools/${o.address}`,
-            boosted: !!BOOSTED_POOLS_CACHE[o.address],
+            boosted:
+                !!BOOSTED_POOLS_CACHE[o.address] || incentives.has(o.address),
             ...(BOOSTED_POOLS_CACHE[o.address] && {
                 incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
@@ -306,7 +307,9 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
                                 side: base?.single.side,
-                                boosted: !!BOOSTED_POOLS_CACHE[d.address],
+                                boosted:
+                                    !!BOOSTED_POOLS_CACHE[d.address] ||
+                                    incentives.has(d.address),
                                 ...(BOOSTED_POOLS_CACHE[d.address] && {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS_CACHE[d.address].docs,
