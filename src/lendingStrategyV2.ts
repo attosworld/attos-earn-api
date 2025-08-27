@@ -8,7 +8,11 @@ import {
     type AstrolescentSwapResponse,
 } from './astrolescent'
 import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
-import { getLendManifest } from './rootFinance'
+import {
+    getLendManifest,
+    getRootFinancePoolState,
+    getRootResource,
+} from './rootFinance'
 import type { LendingStrategy } from './strategiesV2'
 import { WeftClient } from './weftFinance'
 
@@ -63,6 +67,16 @@ export async function handleLendingStrategy({
         }
 
         buyManifestWithoutDeposit.splice(depositCall, 1)
+
+        buyManifestWithoutDeposit = buyManifestWithoutDeposit?.reduce(
+            (acc, m) => {
+                if (!m.includes('fee_bucket')) {
+                    return [...acc, m]
+                }
+                return acc
+            },
+            [] as string[]
+        )
     }
 
     if (!strategy) {
@@ -92,10 +106,16 @@ export async function handleLendingStrategy({
 
             console.log('weft finance swap and lend', swapAndLendManifest)
             return {
-                manifest: swapAndLendManifest,
+                manifest: swapAndLendManifest.trim(),
             }
         }
         case 'Root Finance': {
+            const rootResource = await getRootResource(resourceAddress)
+
+            if (!rootResource) {
+                return
+            }
+
             const swapAndLendManifest =
                 resourceAddress === XRD_RESOURCE_ADDRESS
                     ? `
@@ -104,6 +124,7 @@ export async function handleLendingStrategy({
                     ${getLendManifest({
                         accountAddress,
                         resourceAddress,
+                        rootResource,
                     })}
                     `
                     : `
@@ -111,12 +132,13 @@ export async function handleLendingStrategy({
                     ${buyManifestWithoutDeposit?.join(';')}${getLendManifest({
                         accountAddress,
                         resourceAddress,
+                        rootResource,
                     })}`
 
             console.log('root finance swap and lend', swapAndLendManifest)
 
             return {
-                manifest: swapAndLendManifest,
+                manifest: swapAndLendManifest.trim(),
             }
         }
 
