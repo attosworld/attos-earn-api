@@ -9,6 +9,7 @@ import {
     XRD_RESOURCE_ADDRESS,
 } from './resourceAddresses'
 import { stakeImplementationMethod } from './stakingStrategyV2'
+import { getRadixIncentives } from './radixIncentives'
 
 export interface BaseStrategy {
     name: string
@@ -50,14 +51,23 @@ export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
 export type StrategiesResponse = Strategy[]
 
 export async function getV2Strategies() {
-    const [weftPools, root, defiplazaStakeTokens, fluxReservoir, weftStaking] =
-        await Promise.all([
-            WeftClient.getLendingPools(),
-            getRootMarketStats(),
-            getDefiplazaStakingTokens(),
-            getFluxIncentivisedReservoir(),
-            WeftClient.getStakingState(),
-        ])
+    const [
+        weftPools,
+        root,
+        defiplazaStakeTokens,
+        fluxReservoir,
+        weftStaking,
+        incentives,
+    ] = await Promise.all([
+        WeftClient.getLendingPools(),
+        getRootMarketStats(),
+        getDefiplazaStakingTokens(),
+        getFluxIncentivisedReservoir(),
+        WeftClient.getStakingState(),
+        getRadixIncentives('lending'),
+    ])
+
+    console.log(incentives)
 
     const fluxRemapped: LiquidationStrategy[] = fluxReservoir.map((pool) => ({
         name: `${TOKEN_PRICE_CACHE[pool.resourceAddress].name} Flux Reservoir`,

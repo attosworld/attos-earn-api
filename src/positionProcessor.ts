@@ -842,7 +842,7 @@ Decimal("${investedAmount.minus(currentValue).div(tokenPrices[XUSDC_RESOURCE_ADD
                 (sp as StakingStrategy).sToken === stakeToken?.resource_address
         ) as StakingStrategy | undefined
 
-        if (!strategyPool) {
+        if (!strategyPool || !stakeToken?.resource_address) {
             return
         }
 
@@ -870,6 +870,10 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
                     rc.resource_address === strategyPool?.resource_address
             )
         ) as { resource_changes: ResourceChange[] } | undefined
+
+        if (!value) {
+            return
+        }
 
         const swapToXrdManifest = await astrolescentRequest({
             inputToken: strategyPool.resource_address,

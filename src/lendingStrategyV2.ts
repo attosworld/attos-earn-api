@@ -44,6 +44,10 @@ export async function handleLendingStrategy({
             .then((res) => res.json() as Promise<AstrolescentSwapResponse>)
             .catch(() => undefined)
 
+        if (!swapResponse) {
+            return
+        }
+
         buyManifestWithoutDeposit = swapResponse?.manifest?.split(';')
 
         if (!buyManifestWithoutDeposit) {
@@ -58,14 +62,7 @@ export async function handleLendingStrategy({
             return
         }
 
-        buyManifestWithoutDeposit = buyManifestWithoutDeposit.splice(
-            depositCall,
-            1
-        )
-
-        if (!swapResponse) {
-            return
-        }
+        buyManifestWithoutDeposit.splice(depositCall, 1)
     }
 
     if (!strategy) {
@@ -93,6 +90,7 @@ export async function handleLendingStrategy({
                         }
                     )}`
 
+            console.log('weft finance swap and lend', swapAndLendManifest)
             return {
                 manifest: swapAndLendManifest,
             }
@@ -114,6 +112,8 @@ export async function handleLendingStrategy({
                         accountAddress,
                         resourceAddress,
                     })}`
+
+            console.log('root finance swap and lend', swapAndLendManifest)
 
             return {
                 manifest: swapAndLendManifest,
