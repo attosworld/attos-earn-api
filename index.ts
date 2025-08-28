@@ -45,6 +45,8 @@ export const CACHE_DIR = process.env.CACHE_DIR || './cache'
 
 export const NEWS_CACHE_DIR = `${CACHE_DIR}/news`
 
+export const ACCOUNT_TX_CACHE_DIR = `${CACHE_DIR}/account_tx`
+
 if (!existsSync(CACHE_DIR)) {
     // If it doesn't exist, create the directory
     mkdirSync(CACHE_DIR)
