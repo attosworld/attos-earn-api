@@ -51,23 +51,29 @@ export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
 export type StrategiesResponse = Strategy[]
 
 export async function getV2Strategies() {
-    const [
-        weftPools,
-        root,
-        defiplazaStakeTokens,
-        fluxReservoir,
-        weftStaking,
-        incentives,
-    ] = await Promise.all([
-        WeftClient.getLendingPools(),
-        getRootMarketStats(),
-        getDefiplazaStakingTokens(),
-        getFluxIncentivisedReservoir(),
-        WeftClient.getStakingState(),
-        getRadixIncentives('lending'),
-    ])
+    const [weftPools, root, defiplazaStakeTokens, fluxReservoir, weftStaking] =
+        await Promise.all([
+            WeftClient.getLendingPools(),
+            getRootMarketStats(),
+            getDefiplazaStakingTokens(),
+            getFluxIncentivisedReservoir(),
+            WeftClient.getStakingState(),
+        ])
 
-    console.log(incentives)
+    const lendingPools = [
+        ...weftPools.map((w) => ({
+            symbol: TOKEN_PRICE_CACHE[w.resourceAddress].symbol.toLowerCase(),
+            provider: 'Weft Finance' as const,
+        })),
+        ...(Object.keys(root?.assets ?? {})?.map((key) => ({
+            symbol: TOKEN_PRICE_CACHE[
+                root?.assets[key].resource ?? ''
+            ].symbol.toLowerCase(),
+            provider: 'Root Finance' as const,
+        })) ?? []),
+    ]
+
+    const incentivisedPools = await getRadixIncentives('lending', lendingPools)
 
     const fluxRemapped: LiquidationStrategy[] = fluxReservoir.map((pool) => ({
         name: `${TOKEN_PRICE_CACHE[pool.resourceAddress].name} Flux Reservoir`,
@@ -105,6 +111,9 @@ export async function getV2Strategies() {
             { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
         ],
         rewardTokens: [TOKEN_PRICE_CACHE[pool.resourceAddress].symbol],
+        incentivised: incentivisedPools.has(
+            `we_${TOKEN_PRICE_CACHE[pool.resourceAddress].symbol.toLowerCase()}`
+        ),
     }))
 
     const rootRemapped: LendingStrategy[] = Object.keys(root?.assets || {}).map(
@@ -131,6 +140,9 @@ export async function getV2Strategies() {
             rewardTokens: [
                 TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].symbol,
             ],
+            incentivised: incentivisedPools.has(
+                `ro_${TOKEN_PRICE_CACHE[root?.assets[assetKey].resource ?? ''].symbol.toLowerCase()}`
+            ),
         })
     )
 

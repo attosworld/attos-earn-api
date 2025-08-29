@@ -48,7 +48,18 @@ export type RadixIncentivesResponse = [
     { result: { data: { json: Activity[] } } },
 ]
 
-export const getRadixIncentives = async (category: 'liquidity' | 'lending') => {
+export const ProviderMap = {
+    'Weft Finance': 'we',
+    'Root Finance': 'ro',
+}
+
+export const getRadixIncentives = async (
+    category: 'liquidity' | 'lending',
+    resources?: {
+        symbol: string
+        provider: 'Weft Finance' | 'Root Finance'
+    }[]
+) => {
     return fetch(
         'https://incentives.radixdlt.com/api/trpc/activity.getActivityData,activity.getActivityCategories,dapps.getDapps?batch=1'
     )
@@ -63,6 +74,20 @@ export const getRadixIncentives = async (category: 'liquidity' | 'lending') => {
                 ) {
                     key.componentAddresses.forEach((address) => {
                         acc.add(address)
+                    })
+
+                    const keys = key.id.split('_')
+                    resources?.forEach((resource) => {
+                        if (
+                            resource.symbol.includes(
+                                key.id.split('_')[keys.length - 1]
+                            ) &&
+                            keys[0] === ProviderMap[resource.provider]
+                        ) {
+                            acc.add(
+                                `${ProviderMap[resource.provider]}_${resource.symbol}`
+                            )
+                        }
                     })
                     return acc
                 }

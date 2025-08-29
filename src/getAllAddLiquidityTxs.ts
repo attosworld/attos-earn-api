@@ -184,8 +184,6 @@ export const getAllAddLiquidityTxs = async (
 ): Promise<EnhancedTransactionInfo[]> => {
     const accountTxs = getAccountTxs(address) || []
 
-    console.log(accountTxs[0].confirmed_at)
-
     const response = await fetchTransactions(
         address,
         cursor,
@@ -194,6 +192,7 @@ export const getAllAddLiquidityTxs = async (
             : null
     )
 
+    console.log('Fetched', accountTxs, 'cached transactions')
     console.log('Fetched', response.items.length, 'transactions')
 
     const processedItems = response.items
