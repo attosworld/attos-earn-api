@@ -108,6 +108,7 @@ const fetchTransactions = async (
     cursor?: string,
     fromTimestamp?: string | null
 ): Promise<StreamTransactionsResponse> => {
+    console.log(fromTimestamp)
     return gatewayApi.stream.innerClient.streamTransactions({
         streamTransactionsRequest: {
             affected_global_entities_filter: [address],
@@ -192,7 +193,7 @@ export const getAllAddLiquidityTxs = async (
             : null
     )
 
-    console.log('Fetched', accountTxs, 'cached transactions')
+    console.log('Fetched', accountTxs.length, 'cached transactions')
     console.log('Fetched', response.items.length, 'transactions')
 
     const processedItems = response.items
@@ -205,7 +206,14 @@ export const getAllAddLiquidityTxs = async (
         )
         .map(processTransaction)
 
-    const allItems = [...accountTxs, ...items, ...processedItems]
+    const allItems = [...accountTxs, ...items, ...processedItems].sort(
+        (a, b) => {
+            return (
+                new Date(b.confirmed_at as unknown as string).getTime() -
+                new Date(a.confirmed_at as unknown as string).getTime()
+            )
+        }
+    )
 
     writeToAccounTxCache(address, allItems)
 
