@@ -140,7 +140,7 @@ export const writeToAccounTxCache = (
         (acc, tx) => {
             return {
                 ...acc,
-                [tx.intent_hash || '']: tx,
+                ...(tx.intent_hash && { [tx.intent_hash]: tx }),
             }
         },
         {} as Record<string, EnhancedTransactionInfo>
@@ -188,7 +188,7 @@ export const getAllAddLiquidityTxs = async (
     const response = await fetchTransactions(
         address,
         cursor,
-        accountTxs?.length
+        accountTxs?.length && !cursor
             ? (accountTxs[0].confirmed_at as string | null)
             : null
     )
@@ -206,14 +206,19 @@ export const getAllAddLiquidityTxs = async (
         )
         .map(processTransaction)
 
-    const allItems = [...accountTxs, ...items, ...processedItems].sort(
-        (a, b) => {
-            return (
-                new Date(b.confirmed_at as unknown as string).getTime() -
-                new Date(a.confirmed_at as unknown as string).getTime()
-            )
-        }
+    const txs = [...accountTxs, ...items, ...processedItems].reduce(
+        (acc, tx) => {
+            return {
+                ...acc,
+                ...(tx.intent_hash && { [tx.intent_hash]: tx }),
+            }
+        },
+        {} as Record<string, EnhancedTransactionInfo>
     )
+
+    const allItems = Object.keys(txs).map((key) => {
+        return txs[key]
+    })
 
     writeToAccounTxCache(address, allItems)
 
