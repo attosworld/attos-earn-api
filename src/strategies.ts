@@ -1,5 +1,5 @@
 import { POOLS_CACHE } from '..'
-import type { Pool } from '../getAllPools'
+import type { Pool } from '../src/getAllPools'
 import { previewTx } from './previewTx'
 import {
     DFP2_RESOURCE_ADDRESS,

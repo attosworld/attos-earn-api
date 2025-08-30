@@ -10,7 +10,7 @@ import {
 import { POOLS_CACHE, readCacheFromFile } from '../index' // Adjust the import path as necessary
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas'
 import type { ChartConfiguration } from 'chart.js'
-import type { Pool } from '../getAllPools'
+import type { Pool } from '../src/getAllPools'
 import { createCanvas, loadImage } from 'canvas'
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!)
