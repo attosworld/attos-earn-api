@@ -164,16 +164,24 @@ async function updatePoolsCache(bridgedTokens: Set<string>) {
 }
 
 async function getBridgedTokens() {
-    return new Set(
-        (
+    return new Set([
+        ...(
             (
                 await gatewayApi.state.getEntityMetadata(
                     'account_rdx1cxamqz2f03s8g6smfz32q2gr3prhwh3gqdkdk93d8q8srp8d38cs7e'
                 )
             ).items.find((k) => k.key === 'claimed_entities')?.value
                 .typed as MetadataGlobalAddressArrayValue
-        ).values
-    )
+        ).values,
+        ...(
+            (
+                await gatewayApi.state.getEntityMetadata(
+                    'account_rdx12ycz0wsuygqa5slye9du6e7wz7fr4pzx39l5r5cznqc6yudpks20cw'
+                )
+            ).items.find((k) => k.key === 'claimed_entities')?.value
+                .typed as MetadataGlobalAddressArrayValue
+        ).values,
+    ])
 }
 
 // Function to update the cache
