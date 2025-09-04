@@ -54,6 +54,8 @@ const STABLECOIN_ADDRESSES = new Set([
     XUSDC_RESOURCE_ADDRESS,
     // XUSDT
     'resource_rdx1thrvr3xfs2tarm2dl9emvs26vjqxu6mqvfgvqjne940jv0lnrrg7rw',
+    'resource_rdx1thxj9m87sn5cc9ehgp9qxp6vzeqxtce90xm5cp33373tclyp4et4gv',
+    'resource_rdx1th4v03gezwgzkuma6p38lnum8ww8t4ds9nvcrkr2p9ft6kxx3kxvhe',
 ])
 
 export let TOKEN_PRICE_CACHE: Record<string, TokenInfo>
@@ -130,6 +132,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             left_name: o.x.token.name,
             right_name: o.y.token.name,
             deposit_link: `https://ociswap.com/pools/${o.address}`,
+            fee: o.fee_rate,
             boosted:
                 !!BOOSTED_POOLS_CACHE[o.address] || incentives.has(o.address),
             ...(BOOSTED_POOLS_CACHE[o.address] && {
@@ -307,6 +310,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
                                 side: base?.single.side,
+                                fee: base?.fee,
                                 boosted:
                                     !!BOOSTED_POOLS_CACHE[d.address] ||
                                     incentives.has(d.address),
@@ -377,6 +381,10 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
+                                fee:
+                                    base?.single.side === 'base'
+                                        ? base?.fee || '0'
+                                        : quote?.fee || '0',
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
                                     ...(STABLECOIN_ADDRESSES.has(d.baseToken)

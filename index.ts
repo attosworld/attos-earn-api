@@ -22,7 +22,7 @@ import {
 } from './src/rola'
 import { validateDiscordUserToken } from './src/discord-api'
 import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
-import { getTokenNews } from './src/news'
+import { getTokenNews, updateNewsCache } from './src/news'
 import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
@@ -1073,7 +1073,7 @@ cron.schedule('0 */23 * * *', () => {
 
 // // update news cache every 24 hours
 // cron.schedule('0 */24 * * *', () => {
-//     updateNewsCache()
+await updateNewsCache()
 // })
 
 // Update volume cache every 30 minutes using cron
