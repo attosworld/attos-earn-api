@@ -32,21 +32,21 @@ export interface Activity {
     category: string
     dapp: string
     componentAddresses: string[]
-    data: {
-        ap: boolean
-        multiplier: boolean
-        showOnEarnPage: boolean
-    }
-    activityCategories: {
-        id: string
-        name: string
-        description: string | null
-    }
+    // data: {
+    //     ap: boolean
+    //     multiplier: boolean
+    //     showOnEarnPage: boolean
+    // }
+    // activityCategories: {
+    //     id: string
+    //     name: string
+    //     description: string | null
+    // }
 }
 
-export type RadixIncentivesResponse = [
-    { result: { data: { json: Activity[] } } },
-]
+export type RadixIncentivesResponse = {
+    activityCategories: { activities: Activity[] }[]
+}
 
 export const ProviderMap = {
     'Weft Finance': 'we',
@@ -60,18 +60,15 @@ export const getRadixIncentives = async (
         provider: 'Weft Finance' | 'Root Finance'
     }[]
 ) => {
-    return fetch(
-        'https://incentives.radixdlt.com/api/trpc/activity.getActivityData,activity.getActivityCategories,dapps.getDapps?batch=1'
-    )
+    return fetch('https://incentives.radixdlt.com/api/campaign-data')
         .then((res) => res.json() as Promise<RadixIncentivesResponse>)
         .then((res) => {
-            const activityData = res[0].result.data.json
+            const activityData = res.activityCategories
+                .map((r) => r.activities)
+                .flat()
 
             return activityData.reduce((acc, key) => {
-                if (
-                    key.category.toLowerCase().includes(category) &&
-                    key.data.ap
-                ) {
+                if (key.category.toLowerCase().includes(category)) {
                     key.componentAddresses.forEach((address) => {
                         acc.add(address)
                     })
