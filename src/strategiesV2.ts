@@ -51,14 +51,21 @@ export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
 export type StrategiesResponse = Strategy[]
 
 export async function getV2Strategies() {
-    const [weftPools, root, defiplazaStakeTokens, fluxReservoir, weftStaking] =
-        await Promise.all([
-            WeftClient.getLendingPools(),
-            getRootMarketStats(),
-            getDefiplazaStakingTokens(),
-            getFluxIncentivisedReservoir(),
-            WeftClient.getStakingState(),
-        ])
+    const [
+        weftPools,
+        root,
+        defiplazaStakeTokens,
+        fluxReservoir,
+        weftStaking,
+        weftIncentiveApr,
+    ] = await Promise.all([
+        WeftClient.getLendingPools(),
+        getRootMarketStats(),
+        getDefiplazaStakingTokens(),
+        getFluxIncentivisedReservoir(),
+        WeftClient.getStakingState(),
+        WeftClient.getIncentivisedApr(),
+    ])
 
     const lendingPools = [
         ...weftPools.map((w) => ({
@@ -93,6 +100,14 @@ export async function getV2Strategies() {
         rewardTokens: ['fUSD'],
     }))
 
+    const weftAprMap = weftIncentiveApr.reduce(
+        (acc, curr) => {
+            acc[curr.resourceAddress] = curr.apr
+            return acc
+        },
+        {} as Record<string, number>
+    )
+
     const weftRemapped: LendingStrategy[] = weftPools.map((pool) => ({
         name: TOKEN_PRICE_CACHE[pool.resourceAddress].name,
         symbol: TOKEN_PRICE_CACHE[pool.resourceAddress].symbol,
@@ -101,7 +116,11 @@ export async function getV2Strategies() {
         resource_address: pool.resourceAddress,
         provider: 'Weft Finance',
         bonus_type: 'APR',
-        bonus_value: +new Decimal(pool.netLendingApr).mul(100).toFixed(2),
+        bonus_value: +new Decimal(
+            weftAprMap[pool.resourceAddress] ?? pool.netLendingApr
+        )
+            .mul(100)
+            .toFixed(2),
         strategy_type: 'Lending',
         deposited: +new Decimal(pool.totalDeposit)
             .mul(TOKEN_PRICE_CACHE[pool.resourceAddress].tokenPriceUSD)

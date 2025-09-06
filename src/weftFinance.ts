@@ -380,6 +380,21 @@ export class WeftApiClient {
 
         return await response.json()
     }
+
+    async getIncentivisedApr() {
+        const response = await fetch(`${this.baseUrl}/incentive`)
+
+        if (!response.ok) {
+            throw new Error(
+                `Failed to fetch incentivised APR: ${response.statusText}`
+            )
+        }
+
+        return (await response.json()) as {
+            resourceAddress: string
+            apr: number
+        }[]
+    }
 }
 
 // Export a default instance with the standard API URL
