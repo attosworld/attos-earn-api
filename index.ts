@@ -1,10 +1,7 @@
 import { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
-import { getAllPools, type Pool } from './getAllPools'
-import {
-    getAccountLPPortfolio,
-    type PoolPortfolioItem,
-} from './getAccountLPPortfolio'
-import { getTokenMetadata, type TokenMetadata } from './getTokenMetadata'
+import { getAllPools, type Pool } from './src/getAllPools'
+import { getAccountLPPortfolio } from './src/getAccountLPPortfolio'
+import { getTokenMetadata, type TokenMetadata } from './src/getTokenMetadata'
 import { getExecuteStrategyManifest, getStrategies } from './src/strategies'
 import { getOciswapPoolVolumePerDay } from './src/ociswap'
 import { STRATEGY_MANIFEST } from './src/strategyManifest'
@@ -14,7 +11,7 @@ import {
     astrolescentRequest,
     type AstrolescentSwapRequest,
 } from './src/astrolescent'
-import { getLpPerformance } from './pools-simulate'
+import { getLpPerformance } from './src/pools-simulate'
 import cron from 'node-cron'
 import { getV2Strategies, type Strategy } from './src/strategiesV2'
 import { startDiscordBot } from './src/discord-attos-earn-bot'
@@ -24,6 +21,14 @@ import {
     verifyRola,
 } from './src/rola'
 import { validateDiscordUserToken } from './src/discord-api'
+import { handleStrategiesV2Staking } from './src/stakingStrategyV2'
+import { getTokenNews, updateNewsCache } from './src/news'
+import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
+import { handleLendingStrategy } from './src/lendingStrategyV2'
+import type { PoolPortfolioItem } from './src/positionProcessor'
+import { getFromS3, uploadToS3 } from './src/s3-client'
+import { getLiquidityDistribution } from './src/ociswapPrecisionPool'
+import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -37,6 +42,10 @@ export const TOKEN_INFO_CACHE: Record<string, TokenMetadata> = {
 }
 
 export const CACHE_DIR = process.env.CACHE_DIR || './cache'
+
+export const NEWS_CACHE_DIR = `${CACHE_DIR}/news`
+
+export const ACCOUNT_TX_CACHE_DIR = `${CACHE_DIR}/account_tx`
 
 if (!existsSync(CACHE_DIR)) {
     // If it doesn't exist, create the directory
@@ -143,8 +152,6 @@ const corsHeaders = {
 // Cache for pools
 export let POOLS_CACHE: Pool[] | null = null
 
-const CACHE_DURATION = 60000
-
 // Function to update the cache
 async function updatePoolsCache(bridgedTokens: Set<string>) {
     try {
@@ -157,16 +164,24 @@ async function updatePoolsCache(bridgedTokens: Set<string>) {
 }
 
 async function getBridgedTokens() {
-    return new Set(
-        (
+    return new Set([
+        ...(
             (
                 await gatewayApi.state.getEntityMetadata(
                     'account_rdx1cxamqz2f03s8g6smfz32q2gr3prhwh3gqdkdk93d8q8srp8d38cs7e'
                 )
             ).items.find((k) => k.key === 'claimed_entities')?.value
                 .typed as MetadataGlobalAddressArrayValue
-        ).values
-    )
+        ).values,
+        ...(
+            (
+                await gatewayApi.state.getEntityMetadata(
+                    'account_rdx12ycz0wsuygqa5slye9du6e7wz7fr4pzx39l5r5cznqc6yudpks20cw'
+                )
+            ).items.find((k) => k.key === 'claimed_entities')?.value
+                .typed as MetadataGlobalAddressArrayValue
+        ).values,
+    ])
 }
 
 // Function to update the cache
@@ -278,7 +293,7 @@ async function updatePoolsVolumeCache() {
     }
 }
 
-let STRATEGIES_V2_CACHE: Strategy[] = []
+export let STRATEGIES_V2_CACHE: Strategy[] = []
 
 async function updateStrategiesV2Cache() {
     STRATEGIES_V2_CACHE = await getV2Strategies()
@@ -410,6 +425,10 @@ Bun.serve({
 
         if (url.pathname === '/portfolio' && req.method === 'GET') {
             const address = url.searchParams.get('address')
+            const type = url.searchParams.get('type') as
+                | 'lp'
+                | 'strategy'
+                | undefined
 
             if (!address || !address.startsWith('account_rdx')) {
                 return new Response(
@@ -424,7 +443,7 @@ Bun.serve({
             }
 
             const portfolioPnL: PoolPortfolioItem[] =
-                await getAccountLPPortfolio(address)
+                await getAccountLPPortfolio(address, type)
 
             return new Response(JSON.stringify(portfolioPnL), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -565,11 +584,115 @@ Bun.serve({
         if (url.pathname === '/pools/performance' && req.method === 'GET') {
             const baseToken = url.searchParams.get('base_token')
             const type = url.searchParams.get('type') as 'base' | 'quote' | null
+            const component = url.searchParams.get('component')
 
-            if (!baseToken || !type) {
+            if (!baseToken || !type || !component) {
                 return new Response(
                     JSON.stringify({
-                        error_codes: ['base_token_and_type_required'],
+                        error_codes: [
+                            'base_token_required',
+                            'type_required',
+                            'component_required',
+                        ],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            const lpPerformance = await getFromS3(
+                `lp-performance/${baseToken}-${type}-${component}.json`
+            )
+
+            if (!lpPerformance) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['performance_data_not_found'],
+                    }),
+                    {
+                        status: 404,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(lpPerformance, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (
+            url.pathname === '/pools/performance/populate' &&
+            req.method === 'GET'
+        ) {
+            const baseToken = url.searchParams.get('base_token')
+            const type = url.searchParams.get('type') as 'base' | 'quote' | null
+            const component = url.searchParams.get('component')
+            const date = url.searchParams.get('date')
+
+            if (!baseToken || !type || !component || !date) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: [
+                            'base_token_required',
+                            'type_required',
+                            'component_required',
+                            'date_required',
+                        ],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            const body = await getLpPerformance(
+                baseToken,
+                type,
+                component,
+                new Date(date)
+            )
+
+            if (body) {
+                await uploadToS3(
+                    `lp-performance/${baseToken}-${type}-${component}.json`,
+                    JSON.stringify(body)
+                )
+            }
+
+            return new Response(
+                JSON.stringify({
+                    message: 'Performance data uploaded successfully',
+                }),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/pools/liquidity' && req.method === 'GET') {
+            const component = url.searchParams.get('component')
+
+            if (!component) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['component_required'],
                     }),
                     {
                         headers: {
@@ -582,7 +705,7 @@ Bun.serve({
 
             return new Response(
                 JSON.stringify(
-                    await getLpPerformance(baseToken, type, '45653')
+                    await getLiquidityDistribution(gatewayApiEzMode, component)
                 ),
                 {
                     headers: {
@@ -595,6 +718,155 @@ Bun.serve({
 
         if (url.pathname === '/v2/strategies' && req.method === 'GET') {
             return new Response(JSON.stringify(STRATEGIES_V2_CACHE), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (url.pathname === '/v2/strategies/execute' && req.method === 'GET') {
+            const accountAddress = url.searchParams.get('account')
+            const amount = url.searchParams.get('amount')
+            const strategy = url.searchParams.get('strategy_type') as
+                | 'Liquidation'
+                | 'Lending'
+                | 'Staking'
+                | string
+                | null
+
+            if (!accountAddress || !amount) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: [
+                            'account_address_required',
+                            'amount_required',
+                        ],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            let manifestResponse: { manifest: string } | undefined
+
+            if (strategy === 'Staking') {
+                const componentAddress = url.searchParams.get('component')
+
+                if (!componentAddress) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: ['component_address_required'],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleStrategiesV2Staking({
+                    accountAddress,
+                    componentAddress,
+                    amount,
+                })
+            } else if (strategy === 'Liquidation') {
+                const resourceAddress = url.searchParams.get('resource_address')
+
+                if (!resourceAddress) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: ['resource_address_required'],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleLiquidationStrategy({
+                    accountAddress,
+                    resourceAddress,
+                    amount,
+                })
+            } else if (strategy === 'Lending') {
+                const resourceAddress = url.searchParams.get('resource_address')
+                const provider = url.searchParams.get('provider')
+
+                if (!resourceAddress || !provider) {
+                    return new Response(
+                        JSON.stringify({
+                            error_codes: [
+                                'resource_address_required',
+                                'provider_required',
+                            ],
+                        }),
+                        {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...corsHeaders,
+                            },
+                        }
+                    )
+                }
+
+                manifestResponse = await handleLendingStrategy({
+                    accountAddress,
+                    resourceAddress,
+                    provider,
+                    amount,
+                })
+            }
+
+            if (!manifestResponse) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['invalid_strategy'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(JSON.stringify(manifestResponse), {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...corsHeaders,
+                },
+            })
+        }
+
+        if (url.pathname === '/news' && req.method === 'GET') {
+            const token = url.searchParams.get('token')
+
+            if (!token) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['token_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(JSON.stringify(await getTokenNews(token)), {
                 headers: {
                     'Content-Type': 'application/json',
                     ...corsHeaders,
@@ -707,6 +979,54 @@ Bun.serve({
     },
 })
 
+async function createAndStoreLpPerformance(date?: Date) {
+    const dfpPools = (POOLS_CACHE || [])
+        .filter((p) => p.type === 'defiplaza')
+        .map((p) => ({
+            base_token: p.left_token,
+            type: p.side,
+            component: p.component,
+        }))
+        .flat()
+
+    const ociswapPools = (POOLS_CACHE || [])
+        .filter((p) => p.type === 'ociswap' && p.sub_type !== 'precision')
+        .map((p) => ({
+            base_token: p.base === XRD_RESOURCE_ADDRESS ? p.quote : p.base,
+            type: p.type,
+            component: p.component,
+        }))
+
+    const pools = [...ociswapPools, ...dfpPools] as {
+        base_token: string
+        type: 'ociswap' | 'base' | 'quote'
+        component: string
+    }[]
+
+    console.log('getting performance for all pools', pools.length)
+    let index = 0
+    for (const pool of pools) {
+        const key = `lp-performance/${pool.base_token}-${pool.type}-${pool.component}.json`
+
+        const performance = await getLpPerformance(
+            pool.base_token,
+            pool.type,
+            pool.component,
+            date
+        )
+
+        if (performance) {
+            console.log('got performance ', pool.component)
+            await uploadToS3(key, JSON.stringify(performance))
+            index += 1
+            console.log('uploaded 90 day performance ', index)
+        } else {
+            console.log('failed to get performance ', pool.component)
+        }
+    }
+    console.log('finished getting performance for all pools')
+}
+
 console.log(`Server running on http://localhost:${port}/`)
 
 if (process.env.CACHE_DIR) {
@@ -716,23 +1036,57 @@ if (process.env.CACHE_DIR) {
 console.log('Finished volume pools cache')
 
 // Initial cache update
-await Promise.all([updatePoolsCache(BRIDGED_TOKENS), updateStrategiesV2Cache()])
+await Promise.all([
+    updatePoolsCache(BRIDGED_TOKENS),
+    updateStrategiesV2Cache(),
+    // updateNewsCache(),
+])
 
-// Update pools cache every 5 minutes using cron
-// "*/5 * * * *" means "every 5 minutes"
-cron.schedule('*/5 * * * *', () => {
+// await Promise.all([
+//     createAndStoreLpPerformance(
+//         new Date(new Date().getTime() - 24 * 60 * 60 * 1000) // 24 hours ago
+//     ),
+// ])
+
+// await createAndStoreLpPerformance(new Date('2025-07-13'))
+
+// Update pools cache every 10 minutes using cron
+// "*/10 * * * *" means "every 10 minutes"
+cron.schedule('*/10 * * * *', () => {
     console.log('Running pools cache update (scheduled task)')
     updatePoolsCache(BRIDGED_TOKENS)
 })
 
-cron.schedule('*/5 * * * *', () => {
+cron.schedule('*/10 * * * *', () => {
     console.log('Running strategies cache update (scheduled task)')
     updateStrategiesV2Cache()
 })
 
-// Update volume cache every 15 minutes using cron
-// "*/15 * * * *" means "every 15 minutes"
-cron.schedule('*/15 * * * *', () => {
+// Update volume cache every 30 minutes using cron
+// "*/15 * * * *" means "every 30 minutes"
+cron.schedule('*/30 * * * *', () => {
+    console.log('Running volume cache update (scheduled task)')
+    updatePoolsVolumeCache().then(() => {
+        console.log('finished updating volume cache (sheduled task)')
+    })
+})
+
+// update news cache every 24 hours
+cron.schedule('0 */23 * * *', () => {
+    const last24HoursAgo = new Date(
+        new Date().getTime() - 24 * 60 * 60 * 1000 * 8
+    )
+    createAndStoreLpPerformance(last24HoursAgo)
+})
+
+// // update news cache every 24 hours
+// cron.schedule('0 */24 * * *', () => {
+await updateNewsCache()
+// })
+
+// Update volume cache every 30 minutes using cron
+// "*/15 * * * *" means "every 30 minutes"
+cron.schedule('*/30 * * * *', () => {
     console.log('Running volume cache update (scheduled task)')
     updatePoolsVolumeCache().then(() => {
         console.log('finished updating volume cache (sheduled task)')

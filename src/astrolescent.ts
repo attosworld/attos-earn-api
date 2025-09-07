@@ -16,6 +16,7 @@ export interface TokenInfo {
     icon_url: string
     createdAt: string | null
     tags: string[] | null
+    tvl: number
 }
 
 export type TokensResponse = Array<TokenInfo>
@@ -44,7 +45,14 @@ export const tokensRequest = async () => {
         })
 }
 
-export type AstrolascentSwapResponse = {
+export interface AstrolescentSwapRequest {
+    inputToken: string
+    outputToken: string
+    amount: string
+    accountAddress: string
+}
+
+export interface AstrolescentSwapResponse {
     inputTokens: number
     outputTokens: number
     priceImpact: number
@@ -62,13 +70,6 @@ export type AstrolascentSwapResponse = {
         tokensIn: number
         tokensOut: number
     }>
-}
-
-export interface AstrolescentSwapRequest {
-    inputToken: string
-    outputToken: string
-    amount: string
-    accountAddress: string
 }
 
 export const astrolescentRequest = ({
@@ -90,3 +91,5 @@ export const astrolescentRequest = ({
         }),
     })
 }
+
+// https://api.astrolescent.com/price/history/resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd?days=90

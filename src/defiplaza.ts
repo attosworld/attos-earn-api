@@ -132,6 +132,7 @@ export interface VolumeAndTokenMetadata {
     dexComponent: string
     basePool: string
     quotePool: string
+    fee: string
     baseTvl: number
     quoteTvl: number
     ask_price: number
@@ -225,6 +226,7 @@ export async function getVolumeAndTokenMetadata(
                 volume_7d: data.stats
                     .slice(0, 6)
                     .reduce((acc, curr) => acc + curr.volumeUSD, 0),
+                fee: data.pair.config.fee,
                 left_alt: data.baseToken.symbol,
                 right_alt: data.baseToken.symbol,
                 left_icon: data.baseToken.iconUrl,

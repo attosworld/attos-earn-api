@@ -1,27 +1,30 @@
 import Decimal from 'decimal.js'
-import { PAIR_NAME_CACHE, BOOSTED_POOLS_CACHE, TOKEN_INFO_CACHE } from '.'
+import { PAIR_NAME_CACHE, BOOSTED_POOLS_CACHE, TOKEN_INFO_CACHE } from '../'
 import { getTokenMetadata } from './getTokenMetadata'
 import {
     getDefiplazaPools,
     getVolumeAndTokenMetadata,
     type VolumeAndTokenMetadata,
-} from './src/defiplaza'
-import { ociswapPools as getOciswapPools } from './src/ociswap'
-import { tokensRequest, type TokenInfo } from './src/astrolescent'
+} from './defiplaza'
+import { ociswapPools as getOciswapPools } from './ociswap'
+import { tokensRequest, type TokenInfo } from './astrolescent'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
-} from './src/resourceAddresses'
+} from './resourceAddresses'
+import { getRadixIncentives } from './radixIncentives'
 
 export interface Pool {
     type: string
     sub_type: 'double' | 'single' | 'precision' | 'flex' | 'basic'
     component: string
     current_price?: string
+    lp_token?: string
     tvl: number
     bonus_24h: number
     bonus_7d: number
+    side?: string
     base: string
     quote: string
     volume_7d: number
@@ -41,6 +44,7 @@ export interface Pool {
     boosted: boolean
     incentivised_lp_docs: string
     volume_per_day?: number[]
+    precision_price?: number
 }
 
 const STABLECOIN_ADDRESSES = new Set([
@@ -50,16 +54,27 @@ const STABLECOIN_ADDRESSES = new Set([
     XUSDC_RESOURCE_ADDRESS,
     // XUSDT
     'resource_rdx1thrvr3xfs2tarm2dl9emvs26vjqxu6mqvfgvqjne940jv0lnrrg7rw',
+    'resource_rdx1thxj9m87sn5cc9ehgp9qxp6vzeqxtce90xm5cp33373tclyp4et4gv',
+    'resource_rdx1th4v03gezwgzkuma6p38lnum8ww8t4ds9nvcrkr2p9ft6kxx3kxvhe',
 ])
 
 export let TOKEN_PRICE_CACHE: Record<string, TokenInfo>
 
 export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
-    const [ociPools, dfpPools, tokens] = await Promise.all([
+    const [ociPools, dfpPools, tokens, incentives] = await Promise.all([
         getOciswapPools(),
         getDefiplazaPools(),
         tokensRequest(),
+        getRadixIncentives('liquidity'),
     ])
+
+    console.log(
+        'got info',
+        ociPools.length,
+        dfpPools.data.length,
+        Object.entries(tokens).length,
+        incentives.size
+    )
 
     TOKEN_PRICE_CACHE = tokens
 
@@ -80,7 +95,15 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
         return {
             type: 'ociswap',
             pool_type: 'double',
-            current_price: o.x.price.xrd.now,
+            current_price:
+                o.x.token.address === XRD_RESOURCE_ADDRESS
+                    ? o.y.price.xrd.now
+                    : o.x.price.xrd.now,
+            precision_price:
+                o.x.token.address === XRD_RESOURCE_ADDRESS
+                    ? +o.x.price.xrd.now / +o.y.price.xrd.now
+                    : +o.y.price.xrd.now / +o.x.price.xrd.now,
+            lp_token: o.lp_token_address,
             sub_type: o.pool_type,
             xRatio: new Decimal(o.x.liquidity.token.now).div(
                 o.y.liquidity.token.now
@@ -109,7 +132,9 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             left_name: o.x.token.name,
             right_name: o.y.token.name,
             deposit_link: `https://ociswap.com/pools/${o.address}`,
-            boosted: !!BOOSTED_POOLS_CACHE[o.address],
+            fee: o.fee_rate,
+            boosted:
+                !!BOOSTED_POOLS_CACHE[o.address] || incentives.has(o.address),
             ...(BOOSTED_POOLS_CACHE[o.address] && {
                 incentivised_lp_docs: BOOSTED_POOLS_CACHE[o.address].docs,
             }),
@@ -128,9 +153,12 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                 ...((o.y.token.address !== XRD_RESOURCE_ADDRESS &&
                     tokens[o.y.token.address]?.tags) ||
                     []),
+                ...(incentives.has(o.address) ? ['incentives'] : []),
             ],
         } as Pool
     })
+
+    console.log('done processing OCI pools')
 
     const remappedDefiplazaPools = (
         await Promise.all(
@@ -282,7 +310,10 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
                                 side: base?.single.side,
-                                boosted: !!BOOSTED_POOLS_CACHE[d.address],
+                                fee: base?.fee,
+                                boosted:
+                                    !!BOOSTED_POOLS_CACHE[d.address] ||
+                                    incentives.has(d.address),
                                 ...(BOOSTED_POOLS_CACHE[d.address] && {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS_CACHE[d.address].docs,
@@ -303,12 +334,15 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         : []),
                                     ...((d.baseToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.baseToken].tags) ||
+                                        tokens[d.baseToken]?.tags) ||
                                         []),
                                     ...((d.quoteToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.quoteToken].tags) ||
+                                        tokens[d.quoteToken]?.tags) ||
                                         []),
+                                    ...(incentives.has(d.address)
+                                        ? ['incentives']
+                                        : []),
                                 ],
                             },
                             {
@@ -347,6 +381,10 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                     incentivised_lp_docs:
                                         BOOSTED_POOLS_CACHE[d.address].docs,
                                 }),
+                                fee:
+                                    base?.single.side === 'base'
+                                        ? base?.fee || '0'
+                                        : quote?.fee || '0',
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
                                     ...(STABLECOIN_ADDRESSES.has(d.baseToken)
@@ -363,11 +401,11 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         : []),
                                     ...((d.baseToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.baseToken].tags) ||
+                                        tokens[d.baseToken]?.tags) ||
                                         []),
                                     ...((d.quoteToken !==
                                         DFP2_RESOURCE_ADDRESS &&
-                                        tokens[d.quoteToken].tags) ||
+                                        tokens[d.quoteToken]?.tags) ||
                                         []),
                                 ],
                             } as Pool,
@@ -381,7 +419,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
     console.log('Pair names cache length:', Object.keys(PAIR_NAME_CACHE).length)
 
     return [...remappedOciswapPools, ...remappedDefiplazaPools]
-        .filter((pool) => pool.tvl > 1 && pool.volume_7d > 0)
+        .filter((pool) => pool.tvl > 1)
         .sort((a, b) => {
             return (
                 b.volume_7d - a.volume_7d ||

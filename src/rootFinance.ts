@@ -1,7 +1,9 @@
+import { gatewayApiEzMode } from '..'
 import {
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
+import s from '@calamari-radix/sbor-ez-mode'
 
 // Types for the response
 export interface PoolState {
@@ -44,6 +46,32 @@ export async function getRootFinancePoolState(): Promise<RootFinancePoolStateRes
         console.error('Error fetching Root Finance pool state:', error)
         throw error
     }
+}
+
+const schema = s.struct({
+    pool_unit_refs: s.map({ key: s.address(), value: s.address() }),
+})
+
+let rootResourceMap: Map<string, string>
+
+export async function getRootResource(
+    resourceAddress: string
+): Promise<string | null> {
+    if (!rootResourceMap) {
+        rootResourceMap = await gatewayApiEzMode.state
+            .getComponentInfo(
+                'component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq'
+            )
+            .then((componentInfo) => {
+                const { pool_unit_refs } = componentInfo.state
+                    .getWithSchema(schema)
+                    ._unsafeUnwrap()
+
+                return pool_unit_refs
+            })
+    }
+
+    return rootResourceMap.get(resourceAddress) || null
 }
 
 export interface RootMarketStats {
@@ -90,6 +118,45 @@ export async function getRootMarketStats(): Promise<RootMarketStats | null> {
         console.error('Error fetching Root market stats:', error)
         throw error
     }
+}
+
+export function getLendManifest({
+    accountAddress,
+    resourceAddress,
+    rootResource,
+}: {
+    accountAddress: string
+    resourceAddress: string
+    rootResource: string
+}) {
+    return `
+        TAKE_ALL_FROM_WORKTOP
+          Address("${resourceAddress}")
+          Bucket("bucket_0")
+        ;
+        CALL_METHOD
+          Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+          "contribute"
+          Bucket("bucket_0")
+        ;
+        TAKE_ALL_FROM_WORKTOP
+          Address("${rootResource}")
+          Bucket("bucket_1")
+        ;
+        CALL_METHOD
+          Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+          "create_cdp"
+          Enum<0u8>()
+          Enum<0u8>()
+          Enum<0u8>()
+          Array<Bucket>(
+            Bucket("bucket_1")
+          );
+        CALL_METHOD
+          Address("${accountAddress}")
+          "deposit_batch"
+          Expression("ENTIRE_WORKTOP");
+    `.trim()
 }
 
 export const BORROW_MANIFEST = `CALL_METHOD

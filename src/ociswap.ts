@@ -807,12 +807,50 @@ export function removeOciswapLiquidity({
 ;
 TAKE_ALL_FROM_WORKTOP
   Address("${lpAddress}")
-  Bucket("surge_lp")
+  Bucket("lp")
 ;
 CALL_METHOD
   Address("${lpComponent}")
   "remove_liquidity"
-  Bucket("surge_lp")
+  Bucket("lp")
+;
+CALL_METHOD
+  Address("${account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`
+}
+
+export function removeOciswapPrecisionLiquidity({
+    lpAddress,
+    nftId,
+    lpComponent,
+    account,
+}: {
+    lpAddress: string
+    nftId: string
+    lpComponent: string
+    account: string
+}) {
+    return `CALL_METHOD
+  Address("${account}")
+  "withdraw_non_fungibles"
+  Address("${lpAddress}")
+  Array<NonFungibleLocalId>(
+      NonFungibleLocalId("${nftId}")
+  )
+;
+TAKE_NON_FUNGIBLES_FROM_WORKTOP
+  Address("${lpAddress}")
+  Array<NonFungibleLocalId>(
+      NonFungibleLocalId("${nftId}")
+  )
+  Bucket("lp")
+;
+CALL_METHOD
+  Address("${lpComponent}")
+  "remove_liquidity"
+  Bucket("lp")
 ;
 CALL_METHOD
   Address("${account}")

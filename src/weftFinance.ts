@@ -265,6 +265,20 @@ export class WeftApiClient {
         return await response.json()
     }
 
+    getLendManifest({
+        accountAddress,
+        resourceAddress,
+    }: {
+        accountAddress: string
+        resourceAddress: string
+    }) {
+        return `
+            TAKE_ALL_FROM_WORKTOP Address("${resourceAddress}") Bucket("deposit_0");
+            CALL_METHOD Address("component_rdx1czmr02yl4da709ceftnm9dnmag7rthu0tu78wmtsn5us9j02d9d0xn") "deposit" Array<Bucket>(Bucket("deposit_0"));
+            CALL_METHOD Address("${accountAddress}") "deposit_batch" Expression("ENTIRE_WORKTOP");
+        `.trim()
+    }
+
     /**
      * Get staking state
      * @returns Promise with staking state information
@@ -365,6 +379,21 @@ export class WeftApiClient {
         }
 
         return await response.json()
+    }
+
+    async getIncentivisedApr() {
+        const response = await fetch(`${this.baseUrl}/incentive`)
+
+        if (!response.ok) {
+            throw new Error(
+                `Failed to fetch incentivised APR: ${response.statusText}`
+            )
+        }
+
+        return (await response.json()) as {
+            resourceAddress: string
+            apr: number
+        }[]
     }
 }
 

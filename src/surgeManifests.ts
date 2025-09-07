@@ -1,0 +1,109 @@
+export const SLP_MANIFEST_REMOVE_LIQUIDITY = `CALL_METHOD
+Address("{account}")
+"withdraw"
+Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
+Decimal("{amount}")
+;
+TAKE_ALL_FROM_WORKTOP
+Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
+Bucket("tokens")
+;
+CALL_METHOD
+Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
+"remove_liquidity"
+Bucket("tokens");
+TAKE_ALL_FROM_WORKTOP
+    Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
+    Bucket("bucket2")
+;
+CALL_METHOD
+    Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
+    "unwrap"
+    Bucket("bucket2")
+    Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
+;
+CALL_METHOD
+Address("{account}")
+"deposit_batch"
+Expression("ENTIRE_WORKTOP");`
+
+export const CLOSE_STRATEGY_MANIFEST = `CALL_METHOD
+  Address("{account}")
+  "withdraw"
+  Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
+  Decimal("{surgeLpAmount}")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1t48x0z68dm6z422wxyctj5wvnt2nh95lvmly65vxzywdkd24zypl5d")
+  Bucket("surge_lp")
+;
+CALL_METHOD
+  Address("component_rdx1cp92uemllvxuewz93s5h8f36plsmrysssjjl02vve3zvsdlyxhmne7")
+  "remove_liquidity"
+  Bucket("surge_lp")
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1th3uhn6905l2vh49z2d83xgr45a08dkxn8ajxmt824ctpdu69msp89")
+  Bucket("susd")
+;
+CALL_METHOD
+  Address("component_rdx1czqcwcqyv69y9s6xfk443250ruragewa0vj06u5ke04elcu9kae92n")
+  "unwrap"
+  Bucket("susd")
+  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
+;
+{withdrawLossAmount}
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
+  Bucket("xusdc")
+;
+CALL_METHOD
+  Address("{account}")
+  "create_proof_of_non_fungibles"
+  Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+  Array<NonFungibleLocalId>(
+    NonFungibleLocalId("{rootNftId}")
+  )
+;
+POP_FROM_AUTH_ZONE
+  Proof("root_nft")
+;
+CLONE_PROOF
+  Proof("root_nft")
+  Proof("root_nft_2")
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "repay"
+  Proof("root_nft")
+  Enum<0u8>()
+  Array<Bucket>(
+    Bucket("xusdc")
+  )
+;
+CALL_METHOD
+  Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+  "remove_collateral"
+  Proof("root_nft_2")
+  Array<Tuple>(
+    Tuple(
+      Address("resource_rdx1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxradxrd"),
+      Decimal("{lendAmount}"),
+      false
+    )
+  )
+;
+TAKE_ALL_FROM_WORKTOP
+  Address("resource_rdx1t4upr78guuapv5ept7d7ptekk9mqhy605zgms33mcszen8l9fac8vf")
+  Bucket("xusdc_2")
+;
+CALL_METHOD
+  Address("component_rdx1cz8daq5nwmtdju4hj5rxud0ta26wf90sdk5r4nj9fqjcde5eht8p0f")
+  "swap"
+  Bucket("xusdc_2")
+;
+CALL_METHOD
+  Address("{account}")
+  "deposit_batch"
+  Expression("ENTIRE_WORKTOP")
+;`

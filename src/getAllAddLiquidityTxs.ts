@@ -2,7 +2,9 @@ import type {
     CommittedTransactionInfo,
     StreamTransactionsResponse,
 } from '@radixdlt/babylon-gateway-api-sdk'
-import { gatewayApi } from '.'
+import { gatewayApi } from '../'
+import { ACCOUNT_TX_CACHE_DIR } from '../'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 export const OLD_ATTOS_ROYALTY_COMPONENT =
     'component_rdx1cpd6et0fy7jua470t0mn0vswgc8wzx52nwxzg6dd6rel0g0e08l0lu'
@@ -51,6 +53,23 @@ export const OPEN_POSITION_LP_POOL_STRATEGY_MANIFEST = [
     'add_liquidity',
 ]
 
+export const OPEN_ADD_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'add_stake']
+export const REMOVE_STAKE_POSITION = ['remove_stake', 'swap']
+export const OPEN_STAKE_STAKE_POSITION = [CHARGE_ROYALTY_METHOD, 'stake']
+export const FLUX_POSITION = [CHARGE_ROYALTY_METHOD, 'contribute_to_pool']
+export const CLOSE_FLUX_POSITION = ['withdw_from_pool', 'swap']
+export const SWAP_LEND_WEFT = [
+    CHARGE_ROYALTY_METHOD,
+    'swap',
+    'component_rdx1czmr02yl4da709ceftnm9dnmag7rthu0tu78wmtsn5us9j02d9d0xn',
+]
+export const SWAP_LEND_ROOT = [
+    CHARGE_ROYALTY_METHOD,
+    'swap',
+    'component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq',
+    'create_cdp',
+]
+
 const isStrategyTx = (tx: CommittedTransactionInfo): boolean =>
     (!!tx.affected_global_entities?.includes(ATTOS_ROYALTY_COMPONENT) &&
         !!tx.balance_changes?.fungible_fee_balance_changes.some(
@@ -86,11 +105,18 @@ const processTransaction = (
 
 const fetchTransactions = async (
     address: string,
-    cursor?: string
+    cursor?: string,
+    fromTimestamp?: string | null
 ): Promise<StreamTransactionsResponse> => {
+    console.log(fromTimestamp)
     return gatewayApi.stream.innerClient.streamTransactions({
         streamTransactionsRequest: {
             affected_global_entities_filter: [address],
+            ...(fromTimestamp && {
+                from_ledger_state: {
+                    timestamp: new Date(fromTimestamp),
+                },
+            }),
             opt_ins: {
                 balance_changes: true,
                 receipt_output: true,
@@ -102,12 +128,73 @@ const fetchTransactions = async (
     })
 }
 
+export const writeToAccounTxCache = (
+    address: string,
+    transactions: EnhancedTransactionInfo[]
+) => {
+    if (!existsSync(ACCOUNT_TX_CACHE_DIR)) {
+        mkdirSync(ACCOUNT_TX_CACHE_DIR)
+    }
+
+    const txMap = transactions.reduce(
+        (acc, tx) => {
+            return {
+                ...acc,
+                ...(tx.intent_hash && { [tx.intent_hash]: tx }),
+            }
+        },
+        {} as Record<string, EnhancedTransactionInfo>
+    )
+
+    const cacheFilePath = `${ACCOUNT_TX_CACHE_DIR}/${address}.json`
+
+    if (existsSync(cacheFilePath)) {
+        const existingData = JSON.parse(readFileSync(cacheFilePath, 'utf-8'))
+        writeFileSync(
+            cacheFilePath,
+            JSON.stringify({ ...txMap, ...existingData })
+        )
+    } else {
+        writeFileSync(cacheFilePath, JSON.stringify(txMap))
+    }
+}
+
+export const getAccountTxs = (
+    address: string
+): EnhancedTransactionInfo[] | null => {
+    const cacheFilePath = `${ACCOUNT_TX_CACHE_DIR}/${address}.json`
+
+    if (existsSync(cacheFilePath)) {
+        const txs = JSON.parse(readFileSync(cacheFilePath, 'utf-8')) as Record<
+            string,
+            EnhancedTransactionInfo
+        >
+
+        return Object.keys(txs).map((key) => {
+            return txs[key]
+        })
+    }
+
+    return null
+}
+
 export const getAllAddLiquidityTxs = async (
     address: string,
     items: EnhancedTransactionInfo[] = [],
     cursor?: string
 ): Promise<EnhancedTransactionInfo[]> => {
-    const response = await fetchTransactions(address, cursor)
+    const accountTxs = getAccountTxs(address) || []
+
+    const response = await fetchTransactions(
+        address,
+        cursor,
+        accountTxs?.length && !cursor
+            ? (accountTxs[0].confirmed_at as string | null)
+            : null
+    )
+
+    console.log('Fetched', accountTxs.length, 'cached transactions')
+    console.log('Fetched', response.items.length, 'transactions')
 
     const processedItems = response.items
         .filter(
@@ -119,7 +206,21 @@ export const getAllAddLiquidityTxs = async (
         )
         .map(processTransaction)
 
-    const allItems = [...items, ...processedItems]
+    const txs = [...accountTxs, ...items, ...processedItems].reduce(
+        (acc, tx) => {
+            return {
+                ...acc,
+                ...(tx.intent_hash && { [tx.intent_hash]: tx }),
+            }
+        },
+        {} as Record<string, EnhancedTransactionInfo>
+    )
+
+    const allItems = Object.keys(txs).map((key) => {
+        return txs[key]
+    })
+
+    writeToAccounTxCache(address, allItems)
 
     return response.next_cursor
         ? getAllAddLiquidityTxs(address, allItems, response.next_cursor)

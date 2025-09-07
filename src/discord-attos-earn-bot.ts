@@ -10,7 +10,7 @@ import {
 import { POOLS_CACHE, readCacheFromFile } from '../index' // Adjust the import path as necessary
 import { ChartJSNodeCanvas } from 'chartjs-node-canvas'
 import type { ChartConfiguration } from 'chart.js'
-import type { Pool } from '../getAllPools'
+import type { Pool } from '../src/getAllPools'
 import { createCanvas, loadImage } from 'canvas'
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!)
@@ -30,7 +30,7 @@ DISCORD_JS_CLIENT.once('ready', () => {
 
 enum ProviderIcon {
     Ociswap = 'https://ociswap.com/icons/oci.png',
-    DefiPlaza = 'https://static.defiplaza.net/website/uploads/2023/09/25115716/defiplaza-dex-icon-stokenet.png',
+    DefiPlaza = 'https://radix.defiplaza.net/assets/img/babylon/defiplaza-icon.png',
 }
 
 async function generateFeaturedPoolsImage(
@@ -299,7 +299,9 @@ export async function startDiscordBot() {
                 const attachment = new AttachmentBuilder(imageBuffer, {
                     name: 'deepest-liquidity-pools.png',
                 })
-                await interaction.reply({ files: [attachment] })
+                await interaction.reply({ files: [attachment] }).catch((e) => {
+                    console.error('Error sending message:', e)
+                })
             }
 
             if (highestVolume) {

@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js'
-import { TOKEN_PRICE_CACHE } from '../getAllPools'
+import { TOKEN_PRICE_CACHE } from './getAllPools'
 import { getDefiplazaStakingTokens } from './defiplaza'
 import { getRootMarketStats } from './rootFinance'
 import { WeftClient } from './weftFinance'
@@ -9,6 +9,7 @@ import {
     XRD_RESOURCE_ADDRESS,
 } from './resourceAddresses'
 import { stakeImplementationMethod } from './stakingStrategyV2'
+import { getRadixIncentives } from './radixIncentives'
 
 export interface BaseStrategy {
     name: string
@@ -18,21 +19,22 @@ export interface BaseStrategy {
     resource_address: string
     bonus_type: 'APR' | 'APY'
     strategy_type: 'Lending' | 'Staking' | 'Liquidation'
-    bonus_value: number | string
-    provider: string
+    bonus_value: number
+    provider: 'Flux' | 'Defiplaza' | 'Weft Finance' | 'Root Finance'
     requiredAssets: { resource_address: string; symbol: string }[]
     rewardTokens: string[]
 }
 
 export interface LendingStrategy extends BaseStrategy {
     strategy_type: 'Lending'
-    deposited: string | number
-    loaned: string | number
+    deposited: number
+    loaned: number
 }
 
 export interface StakingStrategy extends BaseStrategy {
     strategy_type: 'Staking'
     total_stake: number
+    sToken: string
     stakeComponent: string
     stakeMethod: string
     requireOptionalProof?: boolean
@@ -41,6 +43,7 @@ export interface StakingStrategy extends BaseStrategy {
 export interface LiquidationStrategy extends BaseStrategy {
     strategy_type: 'Liquidation'
     deposited: string | number
+    reservoirComponent: string
 }
 
 export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
@@ -48,21 +51,44 @@ export type Strategy = LendingStrategy | StakingStrategy | LiquidationStrategy
 export type StrategiesResponse = Strategy[]
 
 export async function getV2Strategies() {
-    const [weftPools, root, defiplazaStakeTokens, fluxReservoir, weftStaking] =
-        await Promise.all([
-            WeftClient.getLendingPools(),
-            getRootMarketStats(),
-            getDefiplazaStakingTokens(),
-            getFluxIncentivisedReservoir(),
-            WeftClient.getStakingState(),
-        ])
+    const [
+        weftPools,
+        root,
+        defiplazaStakeTokens,
+        fluxReservoir,
+        weftStaking,
+        weftIncentiveApr,
+    ] = await Promise.all([
+        WeftClient.getLendingPools(),
+        getRootMarketStats(),
+        getDefiplazaStakingTokens(),
+        getFluxIncentivisedReservoir(),
+        WeftClient.getStakingState(),
+        WeftClient.getIncentivisedApr(),
+    ])
 
-    const fluxRemapped = fluxReservoir.map((pool) => ({
+    const lendingPools = [
+        ...weftPools.map((w) => ({
+            symbol: TOKEN_PRICE_CACHE[w.resourceAddress].symbol.toLowerCase(),
+            provider: 'Weft Finance' as const,
+        })),
+        ...(Object.keys(root?.assets ?? {})?.map((key) => ({
+            symbol: TOKEN_PRICE_CACHE[
+                root?.assets[key].resource ?? ''
+            ].symbol.toLowerCase(),
+            provider: 'Root Finance' as const,
+        })) ?? []),
+    ]
+
+    const incentivisedPools = await getRadixIncentives('lending', lendingPools)
+
+    const fluxRemapped: LiquidationStrategy[] = fluxReservoir.map((pool) => ({
         name: `${TOKEN_PRICE_CACHE[pool.resourceAddress].name} Flux Reservoir`,
         symbol: TOKEN_PRICE_CACHE[pool.resourceAddress].symbol,
         icon_url: TOKEN_PRICE_CACHE[pool.resourceAddress].icon_url,
         info_url: TOKEN_PRICE_CACHE[pool.resourceAddress].infoUrl,
         resource_address: pool.resourceAddress,
+        reservoirComponent: pool.reservoirComponent,
         provider: 'Flux',
         bonus_type: 'APR',
         bonus_value: pool.totalApr,
@@ -74,7 +100,15 @@ export async function getV2Strategies() {
         rewardTokens: ['fUSD'],
     }))
 
-    const weftRemapped = weftPools.map((pool) => ({
+    const weftAprMap = weftIncentiveApr.reduce(
+        (acc, curr) => {
+            acc[curr.resourceAddress] = curr.apr
+            return acc
+        },
+        {} as Record<string, number>
+    )
+
+    const weftRemapped: LendingStrategy[] = weftPools.map((pool) => ({
         name: TOKEN_PRICE_CACHE[pool.resourceAddress].name,
         symbol: TOKEN_PRICE_CACHE[pool.resourceAddress].symbol,
         icon_url: TOKEN_PRICE_CACHE[pool.resourceAddress].icon_url,
@@ -82,67 +116,84 @@ export async function getV2Strategies() {
         resource_address: pool.resourceAddress,
         provider: 'Weft Finance',
         bonus_type: 'APR',
-        bonus_value: new Decimal(pool.netLendingApr).mul(100).toFixed(2),
+        bonus_value: +new Decimal(
+            weftAprMap[pool.resourceAddress] ?? pool.netLendingApr
+        )
+            .mul(100)
+            .toFixed(2),
         strategy_type: 'Lending',
-        deposited: new Decimal(pool.totalDeposit).mul(
-            TOKEN_PRICE_CACHE[pool.resourceAddress].tokenPriceUSD
-        ),
-        loaned: pool.totalLoan,
+        deposited: +new Decimal(pool.totalDeposit)
+            .mul(TOKEN_PRICE_CACHE[pool.resourceAddress].tokenPriceUSD)
+            .toFixed(2),
+        loaned: +pool.totalLoan,
         requiredAssets: [
             { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
         ],
         rewardTokens: [TOKEN_PRICE_CACHE[pool.resourceAddress].symbol],
+        incentivised: incentivisedPools.has(
+            `we_${TOKEN_PRICE_CACHE[pool.resourceAddress].symbol.toLowerCase()}`
+        ),
     }))
 
-    const rootRemapped = Object.keys(root?.assets || {}).map((assetKey) => ({
-        name: TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].name,
-        symbol: TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].symbol,
-        icon_url:
-            TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].icon_url,
-        info_url:
-            TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].infoUrl,
-        resource_address: root?.assets[assetKey].resource || '',
-        bonus_type: 'APY',
-        strategy_type: 'Lending',
-        provider: 'Root Finance',
-        bonus_value: root?.assets[assetKey].lendingAPY ?? 0,
-        deposited: root?.assets[assetKey].totalSupply.value,
-        loaned: root?.assets[assetKey].totalBorrow.value,
-        requiredAssets: [
-            { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
-        ],
-        rewardTokens: [
-            TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].symbol,
-        ],
-    }))
+    const rootRemapped: LendingStrategy[] = Object.keys(root?.assets || {}).map(
+        (assetKey) => ({
+            name: TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].name,
+            symbol: TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || '']
+                .symbol,
+            icon_url:
+                TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || '']
+                    .icon_url,
+            info_url:
+                TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || '']
+                    .infoUrl,
+            resource_address: root?.assets[assetKey].resource || '',
+            bonus_type: 'APY',
+            strategy_type: 'Lending',
+            provider: 'Root Finance',
+            bonus_value: root?.assets[assetKey].lendingAPY ?? 0,
+            deposited: root?.assets[assetKey].totalSupply.value || 0,
+            loaned: root?.assets[assetKey].totalBorrow.value || 0,
+            requiredAssets: [
+                { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
+            ],
+            rewardTokens: [
+                TOKEN_PRICE_CACHE[root?.assets[assetKey].resource || ''].symbol,
+            ],
+            incentivised: incentivisedPools.has(
+                `ro_${TOKEN_PRICE_CACHE[root?.assets[assetKey].resource ?? ''].symbol.toLowerCase()}`
+            ),
+        })
+    )
 
     const stakingImplementations = await stakeImplementationMethod({
         resourceAddresses: [WEFT_RESOURCE_ADDRESS],
     })
 
-    const defiplazaStakingRemapped = defiplazaStakeTokens.map((token) => ({
-        name: TOKEN_PRICE_CACHE[token.token].name,
-        symbol: TOKEN_PRICE_CACHE[token.token].symbol,
-        icon_url: TOKEN_PRICE_CACHE[token.token].icon_url,
-        info_url: token.infoUrl,
-        resource_address: token.token,
-        provider: 'Defiplaza',
-        bonus_type: 'APY',
-        bonus_value: new Decimal(token.intervalAmount.trim())
-            .mul(new Decimal(52).dividedBy(token.interval.trim()))
-            .dividedBy(token.totalStake)
-            .mul(100)
-            .toFixed(2),
-        strategy_type: 'Staking',
-        total_stake: token.totalStakeUSD,
-        requiredAssets: [
-            { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
-        ],
-        rewardTokens: [TOKEN_PRICE_CACHE[token.token].symbol],
-        stakeComponent: token.address,
-        stakeMethod: 'add_stake',
-        requireOptionalProof: false,
-    }))
+    const defiplazaStakingRemapped: StakingStrategy[] =
+        defiplazaStakeTokens.map((token) => ({
+            name: TOKEN_PRICE_CACHE[token.token].name,
+            symbol: TOKEN_PRICE_CACHE[token.token].symbol,
+            icon_url: TOKEN_PRICE_CACHE[token.token].icon_url,
+            sToken: token.sToken,
+            info_url: token.infoUrl,
+            resource_address: token.token,
+            provider: 'Defiplaza',
+            bonus_type: 'APY',
+            bonus_value: +new Decimal(token.intervalAmount.trim())
+                .mul(new Decimal(52).dividedBy(token.interval.trim()))
+                .dividedBy(token.totalStake)
+                .mul(100)
+                .toFixed(2),
+            strategy_type: 'Staking',
+            total_stake: token.totalStakeUSD,
+            requiredAssets: [
+                { resource_address: XRD_RESOURCE_ADDRESS, symbol: 'XRD' },
+            ],
+            rewardTokens: [TOKEN_PRICE_CACHE[token.token].symbol],
+            stakeComponent: token.address,
+            stakeMethod: 'add_stake',
+            requireOptionalProof: false,
+        }))
 
     const allStrategies = [
         ...weftRemapped,
@@ -158,9 +209,9 @@ export async function getV2Strategies() {
                       info_url:
                           TOKEN_PRICE_CACHE[WEFT_RESOURCE_ADDRESS].infoUrl,
                       resource_address: WEFT_RESOURCE_ADDRESS,
-                      provider: 'Weft',
+                      provider: 'Weft Finance',
                       bonus_type: 'APR',
-                      bonus_value: new Decimal(weftStaking.apr)
+                      bonus_value: +new Decimal(weftStaking.apr)
                           .times(100)
                           .toFixed(2),
                       strategy_type: 'Staking',
