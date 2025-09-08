@@ -304,6 +304,8 @@ const BRIDGED_TOKENS = await getBridgedTokens()
 
 const port = process.env.PORT || 3000
 
+let isReady = false
+
 Bun.serve({
     port,
     idleTimeout: 30,
@@ -322,6 +324,23 @@ Bun.serve({
             return new Response(JSON.stringify(POOLS_CACHE), {
                 headers: { 'Content-Type': 'application/json', ...corsHeaders },
             })
+        }
+
+        if (url.pathname === '/health' && req.method === 'GET') {
+            return isReady
+                ? new Response(undefined, {
+                      headers: {
+                          'Content-Type': 'application/json',
+                          ...corsHeaders,
+                      },
+                  })
+                : new Response(undefined, {
+                      status: 400,
+                      headers: {
+                          'Content-Type': 'application/json',
+                          ...corsHeaders,
+                      },
+                  })
         }
 
         if (url.pathname.startsWith('/pools/volume') && req.method === 'GET') {
@@ -1041,6 +1060,8 @@ await Promise.all([
     updateStrategiesV2Cache(),
     // updateNewsCache(),
 ])
+
+isReady = true
 
 // await Promise.all([
 //     createAndStoreLpPerformance(
