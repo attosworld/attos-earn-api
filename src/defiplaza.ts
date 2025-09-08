@@ -155,6 +155,7 @@ export interface VolumeAndTokenMetadata {
     pairState: PairState
     basePoolState: PoolState
     quotePoolState: PoolState
+    divisibility: number
     single: {
         side: 'base' | 'quote'
         alr_24h: number
@@ -240,6 +241,7 @@ export async function getVolumeAndTokenMetadata(
                 basePoolState: data.basePoolState,
                 quotePoolState: data.quotePoolState,
                 volume_per_day: getLastSevenDaysVolume(data.stats),
+                divisibility: data.baseToken.divisibility,
                 single: {
                     side: singleSide,
                     alr_24h:
