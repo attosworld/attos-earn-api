@@ -29,6 +29,11 @@ import type { PoolPortfolioItem } from './src/positionProcessor'
 import { getFromS3, uploadToS3 } from './src/s3-client'
 import { getLiquidityDistribution } from './src/ociswapPrecisionPool'
 import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
+import {
+    ATTOS_ROYALTY_COMPONENT,
+    CHARGE_ROYALTY_METHOD,
+    fetchTransactions,
+} from './src/getAllAddLiquidityTxs'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -983,6 +988,30 @@ Bun.serve({
                 ),
                 {
                     status: 200,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
+        if (url.pathname === '/stats/users' && req.method === 'GET') {
+            const txs = await fetchTransactions(ATTOS_ROYALTY_COMPONENT)
+
+            const strategies = txs.items.filter((tx) =>
+                tx.manifest_instructions?.includes(CHARGE_ROYALTY_METHOD)
+            ).length
+            const lpDeposited = txs.items.filter((tx) =>
+                tx.manifest_instructions?.includes('track_lp')
+            ).length
+
+            return Response.json(
+                {
+                    strategies,
+                    lpDeposited,
+                },
+                {
                     headers: {
                         'Content-Type': 'application/json',
                         ...corsHeaders,

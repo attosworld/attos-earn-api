@@ -103,7 +103,7 @@ const processTransaction = (
     return tx
 }
 
-const fetchTransactions = async (
+export const fetchTransactions = async (
     address: string,
     cursor?: string,
     fromTimestamp?: string | null
