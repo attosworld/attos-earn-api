@@ -133,6 +133,8 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             right_name: o.y.token.name,
             deposit_link: `https://ociswap.com/pools/${o.address}`,
             fee: o.fee_rate,
+            xDivisibility: tokens[o.x.token.address]?.divisibility,
+            yDivisibility: tokens[o.y.token.address]?.divisibility,
             boosted:
                 !!BOOSTED_POOLS_CACHE[o.address] || incentives.has(o.address),
             ...(BOOSTED_POOLS_CACHE[o.address] && {
