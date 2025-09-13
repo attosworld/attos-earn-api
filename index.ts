@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import type { MetadataGlobalAddressArrayValue } from '@radixdlt/babylon-gateway-api-sdk'
 import {
     astrolescentRequest,
+    tokensRequest,
     type AstrolescentSwapRequest,
 } from './src/astrolescent'
 import { getLpPerformance } from './src/pools-simulate'
@@ -34,6 +35,7 @@ import {
     CHARGE_ROYALTY_METHOD,
     fetchTransactions,
 } from './src/getAllAddLiquidityTxs'
+import Decimal from 'decimal.js'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -997,6 +999,7 @@ Bun.serve({
         }
 
         if (url.pathname === '/stats/users' && req.method === 'GET') {
+            const tokens = await tokensRequest()
             const txs = await fetchTransactions(ATTOS_ROYALTY_COMPONENT)
 
             const strategies = txs.items.filter((tx) =>
@@ -1006,10 +1009,37 @@ Bun.serve({
                 tx.manifest_instructions?.includes('track_lp')
             ).length
 
+            const totalDepositsVolume = txs.items.reduce((acc, tx) => {
+                if (tx.balance_changes?.fungible_balance_changes) {
+                    acc = acc.plus(
+                        tx.balance_changes.fungible_balance_changes
+                            .filter(
+                                (bc) =>
+                                    bc.entity_address.startsWith(
+                                        'account_rdx'
+                                    ) && tokens[bc.resource_address]
+                            )
+                            .reduce((acc, bc) => {
+                                return acc.plus(
+                                    new Decimal(
+                                        tokens[
+                                            bc.resource_address
+                                        ].tokenPriceUSD
+                                    )
+                                        .times(bc.balance_change)
+                                        .abs()
+                                )
+                            }, new Decimal(0))
+                    )
+                }
+                return acc
+            }, new Decimal(0))
+
             return Response.json(
                 {
                     strategies,
                     lpDeposited,
+                    totalDepositsVolume,
                 },
                 {
                     headers: {
