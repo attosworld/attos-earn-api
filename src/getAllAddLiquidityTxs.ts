@@ -178,6 +178,24 @@ export const getAccountTxs = (
     return null
 }
 
+export const fetchAllTransactions = async (
+    address: string,
+    items: CommittedTransactionInfo[] = [],
+    cursor?: string
+): Promise<CommittedTransactionInfo[]> => {
+    const txs = await fetchTransactions(address, cursor)
+
+    if (txs.next_cursor) {
+        return fetchAllTransactions(
+            address,
+            [...items, ...txs.items],
+            txs.next_cursor
+        )
+    }
+
+    return [...items, ...txs.items]
+}
+
 export const getAllAddLiquidityTxs = async (
     address: string,
     items: EnhancedTransactionInfo[] = [],

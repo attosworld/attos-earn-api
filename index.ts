@@ -33,6 +33,7 @@ import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
 import {
     ATTOS_ROYALTY_COMPONENT,
     CHARGE_ROYALTY_METHOD,
+    fetchAllTransactions,
     fetchTransactions,
 } from './src/getAllAddLiquidityTxs'
 import Decimal from 'decimal.js'
@@ -1000,16 +1001,16 @@ Bun.serve({
 
         if (url.pathname === '/stats/users' && req.method === 'GET') {
             const tokens = await tokensRequest()
-            const txs = await fetchTransactions(ATTOS_ROYALTY_COMPONENT)
+            const txs = await fetchAllTransactions(ATTOS_ROYALTY_COMPONENT)
 
-            const strategies = txs.items.filter((tx) =>
+            const strategies = txs.filter((tx) =>
                 tx.manifest_instructions?.includes(CHARGE_ROYALTY_METHOD)
             ).length
-            const lpDeposited = txs.items.filter((tx) =>
+            const lpDeposited = txs.filter((tx) =>
                 tx.manifest_instructions?.includes('track_lp')
             ).length
 
-            const totalDepositsVolume = txs.items.reduce((acc, tx) => {
+            const totalDepositsVolume = txs.reduce((acc, tx) => {
                 if (tx.balance_changes?.fungible_balance_changes) {
                     acc = acc.plus(
                         tx.balance_changes.fungible_balance_changes
