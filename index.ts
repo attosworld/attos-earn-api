@@ -34,7 +34,6 @@ import {
     ATTOS_ROYALTY_COMPONENT,
     CHARGE_ROYALTY_METHOD,
     fetchAllTransactions,
-    fetchTransactions,
 } from './src/getAllAddLiquidityTxs'
 import Decimal from 'decimal.js'
 

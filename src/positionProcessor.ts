@@ -11,6 +11,7 @@ import {
     STRATEGIES_V2_CACHE,
 } from '../index'
 import {
+    ATTOS_ROYALTY_COMPONENT,
     CLOSE_FLUX_POSITION,
     CLOSE_POSITION_SURGE_LP_STRATEGY_MANIFEST,
     FLUX_POSITION,
@@ -1085,6 +1086,103 @@ ${swapToXrdManifest.manifest}`
             closeManifest,
         }
     } else if (
+        tx.affected_global_entities
+            ?.filter((ge) => ge.startsWith('resource_rdx'))
+            .every(
+                (ge) =>
+                    ge ===
+                    'resource_rdx1th0gjs665xgm343j4jee7k8apu8l8pg9cf8x587qprszeeknu8wsxz'
+            ) &&
+        tx.manifest_instructions?.includes(ATTOS_ROYALTY_COMPONENT)
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const lentToken = tx.balance_changes?.fungible_balance_changes.find(
+            (bc) =>
+                bc.resource_address !== XRD_RESOURCE_ADDRESS &&
+                bc.entity_address.startsWith('account_rdx')
+        )
+
+        if (!xrdChange || !lentToken) {
+            return
+        }
+
+        const token = await gatewayApiEzMode.state
+            .getResourceInfo(lentToken.resource_address)
+            .then((m) =>
+                m.metadata.metadataExtractor.getMetadataValue(
+                    'associated_resource',
+                    'GlobalAddress'
+                )
+            )
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                (sp as LendingStrategy).resource_address === token &&
+                sp.strategy_type === 'Lending' &&
+                sp.provider === 'Weft Finance'
+        ) as LendingStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+CALL_METHOD Address("${address}") "withdraw" Address("${lentToken.resource_address}") Decimal("${lentToken.balance_change}");
+TAKE_ALL_FROM_WORKTOP Address("${lentToken.resource_address}") Bucket("lp");
+CALL_METHOD Address("component_rdx1czmr02yl4da709ceftnm9dnmag7rthu0tu78wmtsn5us9j02d9d0xn") "withdraw" Array<Bucket>(Bucket("lp"));
+        `
+
+        const manifest = `
+${unstakeManifest}
+CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    +rc.amount > 0 &&
+                    rc.resource_address === strategyPool.resource_address
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        const amountOut = value?.resource_changes.find(
+            (r) => r.resource_address === XRD_RESOURCE_ADDRESS && +r.amount > 0
+        )
+
+        const currentValueXrd = new Decimal(amountOut?.amount ?? 0)
+
+        const currentValueUsd = new Decimal(amountOut?.amount ?? 0).times(
+            tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
+        )
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `${strategyPool.provider}`,
+            tx: tx.intent_hash,
+            poolName: `Swap & Lend ${tokenPrices[strategyPool.resource_address].symbol}`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest: manifest,
+        }
+    } else if (
         SWAP_LEND_WEFT.every((method) =>
             tx.manifest_instructions?.includes(method)
         )
@@ -1234,6 +1332,139 @@ CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`
             leftAlt: tokenPrices[strategyPool.resource_address].name,
             leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
             closeManifest,
+        }
+    } else if (
+        tx.affected_global_entities?.find(
+            (ge) =>
+                ge ===
+                'resource_rdx1t5ey8s5nq99p5ae7jxp4ez5xljn7gtjgesr0dartq9aeys2tfwqg9w'
+        ) &&
+        tx.manifest_instructions?.includes(ATTOS_ROYALTY_COMPONENT)
+    ) {
+        const xrdChange = new Decimal(
+            tx.balance_changes?.fungible_balance_changes.find(
+                (bc) =>
+                    bc.resource_address === XRD_RESOURCE_ADDRESS &&
+                    bc.entity_address.startsWith('account_rdx')
+            )?.balance_change || 0
+        ).abs()
+
+        const lentNft = tx.balance_changes?.non_fungible_balance_changes.find(
+            (bc) => bc.entity_address.startsWith('account_rdx')
+        )
+
+        if (!lentNft) {
+            return
+        }
+
+        const nftData = await gatewayApiEzMode.gateway.state.getNonFungibleData(
+            lentNft.resource_address,
+            lentNft.added[0]
+        )
+
+        let token: string
+        let tokenAmount: string = ''
+
+        if (nftData.data?.programmatic_json.kind === 'Tuple') {
+            const collaterals = nftData.data?.programmatic_json.fields.find(
+                (f) => f.field_name === 'collaterals'
+            ) as ProgrammaticScryptoSborValueMap | undefined
+            if (
+                collaterals &&
+                collaterals.entries.length &&
+                collaterals.entries[0].key.kind === 'Reference'
+            ) {
+                token = collaterals.entries[0].key.value
+            }
+            if (
+                collaterals &&
+                collaterals.entries.length &&
+                collaterals.entries[0].value.kind === 'PreciseDecimal'
+            ) {
+                tokenAmount = collaterals.entries[0].value.value
+            }
+        }
+
+        const strategyPool = STRATEGIES_V2_CACHE.find(
+            (sp) =>
+                sp.resource_address === token &&
+                sp.strategy_type === 'Lending' &&
+                sp.provider === 'Root Finance'
+        ) as LendingStrategy | undefined
+
+        if (!strategyPool) {
+            return
+        }
+
+        const unstakeManifest = `
+            CALL_METHOD
+              Address("${address}")
+              "create_proof_of_non_fungibles"
+              Address("resource_rdx1ngekvyag42r0xkhy2ds08fcl7f2ncgc0g74yg6wpeeyc4vtj03sa9f")
+              Array<NonFungibleLocalId>(
+                NonFungibleLocalId("${lentNft.added[0]}")
+              );
+            POP_FROM_AUTH_ZONE
+              Proof("root_nft");
+            CALL_METHOD
+              Address("component_rdx1crwusgp2uy9qkzje9cqj6pdpx84y94ss8pe7vehge3dg54evu29wtq")
+              "remove_collateral"
+              Proof("root_nft")
+              Array<Tuple>(
+                Tuple(
+                  Address("${strategyPool.resource_address}"),
+                  Decimal("${tokenAmount}"),
+                  false
+                )
+              );
+        `.trim()
+
+        const manifest = `
+            ${unstakeManifest}
+            CALL_METHOD Address("${address}") "deposit_batch" Expression("ENTIRE_WORKTOP");`.trim()
+
+        const removeStakeAmountTx = await previewTx(manifest)
+
+        const value = removeStakeAmountTx.resource_changes?.find((rc) =>
+            (
+                rc as {
+                    index: number
+                    resource_changes: ResourceChange[]
+                }
+            ).resource_changes?.find(
+                (rc) =>
+                    +rc.amount > 0 &&
+                    rc.resource_address === strategyPool.resource_address
+            )
+        ) as { resource_changes: ResourceChange[] } | undefined
+
+        if (!value) {
+            return
+        }
+
+        const amountOut = value?.resource_changes.find(
+            (r) => r.resource_address === XRD_RESOURCE_ADDRESS && +r.amount > 0
+        )
+
+        const currentValueXrd = new Decimal(amountOut?.amount ?? 0)
+
+        const currentValueUsd = new Decimal(amountOut?.amount ?? 0).times(
+            tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD
+        )
+
+        return {
+            currentValueXrd,
+            currentValueUsd,
+            investedAmountXrd: xrdChange,
+            investedAmountUsd: xrdChange.times(
+                new Decimal(tokenPrices[XRD_RESOURCE_ADDRESS].tokenPriceUSD)
+            ),
+            provider: `${strategyPool.provider}`,
+            tx: tx.intent_hash,
+            poolName: `Swap & Lend ${tokenPrices[strategyPool.resource_address].symbol}`,
+            leftAlt: tokenPrices[strategyPool.resource_address].name,
+            leftIcon: tokenPrices[strategyPool.resource_address].iconUrl,
+            closeManifest: manifest,
         }
     } else if (
         SWAP_LEND_ROOT.every((method) =>
