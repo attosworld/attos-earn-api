@@ -288,7 +288,7 @@ export interface DefiplazaStakingPool {
     description: string
     infoUrl: string
     intervalAmount: string
-    interval: string
+    interval: `${number}` | `${number} weeks`
     totalStake: number
     totalStakeUSD: number
 }

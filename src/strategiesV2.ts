@@ -180,7 +180,13 @@ export async function getV2Strategies() {
             provider: 'Defiplaza',
             bonus_type: 'APY',
             bonus_value: +new Decimal(token.intervalAmount.trim())
-                .mul(new Decimal(52).dividedBy(token.interval.trim()))
+                .mul(
+                    new Decimal(52).dividedBy(
+                        token.interval.includes('weeks')
+                            ? token.interval.split(' ')[0]
+                            : token.interval.trim()
+                    )
+                )
                 .dividedBy(token.totalStake)
                 .mul(100)
                 .toFixed(2),
