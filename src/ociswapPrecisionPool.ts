@@ -1,6 +1,7 @@
 import Decimal from 'decimal.js'
 import { sleep } from 'bun'
 import type {
+    MetadataGlobalAddressValue,
     ProgrammaticScryptoSborValue,
     StateEntityDetailsResponseComponentDetails,
 } from '@radixdlt/babylon-gateway-api-sdk'
@@ -8,6 +9,7 @@ import s from '@calamari-radix/sbor-ez-mode'
 import type { GatewayEzMode } from '@calamari-radix/gateway-ez-mode'
 import { doesKeyExistInS3, getFromS3, uploadToS3 } from './s3-client'
 import { XRD_RESOURCE_ADDRESS } from './resourceAddresses'
+import { gatewayApiEzMode } from '..'
 
 const MAX_TICK = 887272
 const MIN_TICK = -MAX_TICK
@@ -548,15 +550,39 @@ export async function getHistoricalComponentInfo(
                 },
             },
         })
-        .then((response) =>
-            schema.parse(
-                (
-                    response.items[0]
-                        .details as StateEntityDetailsResponseComponentDetails
-                ).state as ProgrammaticScryptoSborValue,
-                []
-            )
-        )
+        .then((res) => {
+            return res
+        })
+        .then((response) => {
+            if (response.items.length) {
+                const component = response.items[0]
+                    .details as StateEntityDetailsResponseComponentDetails
+
+                const state = schema.parse(
+                    component.state as ProgrammaticScryptoSborValue,
+                    []
+                )
+
+                const tokens = response.items[0].fungible_resources?.items.map(
+                    (fr) => fr.resource_address
+                )
+
+                const xAddress = response.items[0].metadata.items.find(
+                    (i) => i.key === 'x_address'
+                )?.value.typed as MetadataGlobalAddressValue
+                const yAddress = response.items[0].metadata.items.find(
+                    (i) => i.key === 'y_address'
+                )?.value.typed as MetadataGlobalAddressValue
+
+                return {
+                    x: tokens![0],
+                    y: tokens![1],
+                    ...state,
+                    x_address: xAddress?.value,
+                    y_address: yAddress?.value,
+                }
+            }
+        })
 }
 
 export async function getLpPerformanceOverTime(
@@ -597,7 +623,7 @@ export async function getLpPerformanceOverTime(
                 18, // xDivisibility
                 y,
                 18, // yDivisibility
-                new Decimal(componentInfo.price_sqrt),
+                new Decimal(componentInfo?.price_sqrt ?? 0),
                 tickToPriceSqrt(new Decimal(leftBound)),
                 tickToPriceSqrt(new Decimal(rightBound))
             )
@@ -610,6 +636,81 @@ export async function getLpPerformanceOverTime(
     )
 
     return performanceData
+}
+
+export async function getPriceOvertime(
+    gatewayApiEzMode: GatewayEzMode,
+    componentAddress: string,
+    startDate: Date,
+    endDate: Date
+) {
+    const dateRangePerDayList = []
+
+    const currentDate = new Date(startDate)
+
+    while (currentDate <= endDate) {
+        dateRangePerDayList.push(new Date(currentDate))
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+    }
+
+    const performanceData = await Promise.all(
+        dateRangePerDayList.map(async (stateVersion) => {
+            const componentInfo = await getHistoricalComponentInfo(
+                gatewayApiEzMode,
+                componentAddress,
+                stateVersion
+            )
+
+            await sleep(2000)
+
+            const tick =
+                componentInfo?.active_tick.variant === 'Some'
+                    ? componentInfo?.active_tick.value
+                    : '0'
+
+            return componentInfo
+                ? componentInfo.y_address === XRD_RESOURCE_ADDRESS
+                    ? tickToPrice(new Decimal(tick)).toNumber()
+                    : new Decimal(1)
+                          .dividedBy(tickToPrice(new Decimal(tick)))
+                          .toNumber()
+                : 0
+        })
+    )
+
+    const latestDate = new Date()
+
+    const componentInfo = await getHistoricalComponentInfo(
+        gatewayApiEzMode,
+        componentAddress,
+        latestDate
+    )
+
+    await sleep(100)
+
+    const tick =
+        componentInfo?.active_tick.variant === 'Some'
+            ? componentInfo?.active_tick.value
+            : '0'
+
+    const latestPrice = componentInfo
+        ? componentInfo.y_address === XRD_RESOURCE_ADDRESS
+            ? tickToPrice(new Decimal(tick)).toNumber()
+            : new Decimal(1)
+                  .dividedBy(tickToPrice(new Decimal(tick)))
+                  .toNumber()
+        : 0
+
+    dateRangePerDayList.push(latestDate)
+    performanceData.push(latestPrice)
+
+    return dateRangePerDayList.reduce(
+        (acc, date, i) => ({
+            ...acc,
+            [date.toISOString().split('T')[0]]: performanceData[i],
+        }),
+        {} as Record<string, number>
+    )
 }
 
 export async function getLiquidityDistribution(
@@ -872,4 +973,42 @@ export function addableAmounts(
         adjustWithinMargin(xAmount, xAmountAllowed, xPrecisionMargin),
         adjustWithinMargin(yAmount, yAmountAllowed, yPrecisionMargin),
     ]
+}
+
+export async function getOciLpPriceOvertime(
+    component: string,
+    startDate?: Date
+) {
+    let date = new Date()
+
+    if (startDate) {
+        date = new Date(startDate)
+    } else {
+        date.setDate(date.getDate() - 90)
+        date.setDate(date.getDate() + 1)
+        date.setHours(0, 0, 0, 0)
+    }
+
+    const currentData = (await doesKeyExistInS3(
+        `oci-precision-price/${component}.json`
+    ))
+        ? (JSON.parse(
+              (await getFromS3(`oci-precision-price/${component}.json`)) ?? '{}'
+          ) as Record<string, number> | undefined)
+        : undefined
+
+    const dates = Object.keys(currentData ?? {})
+
+    const latestDate = new Date(dates[dates.length - 1] ?? date)
+
+    console.log('storing precision pool from ', latestDate)
+
+    const price = await getPriceOvertime(
+        gatewayApiEzMode,
+        component,
+        latestDate,
+        new Date()
+    )
+
+    return { ...currentData, ...price }
 }

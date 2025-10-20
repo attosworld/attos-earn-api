@@ -28,7 +28,10 @@ import { handleLiquidationStrategy } from './src/liquidiationStrategyV2'
 import { handleLendingStrategy } from './src/lendingStrategyV2'
 import type { PoolPortfolioItem } from './src/positionProcessor'
 import { getFromS3, uploadToS3 } from './src/s3-client'
-import { getLiquidityDistribution } from './src/ociswapPrecisionPool'
+import {
+    getLiquidityDistribution,
+    getOciLpPriceOvertime,
+} from './src/ociswapPrecisionPool'
 import { XRD_RESOURCE_ADDRESS } from './src/resourceAddresses'
 import {
     ATTOS_ROYALTY_COMPONENT,
@@ -36,6 +39,7 @@ import {
     fetchAllTransactions,
 } from './src/getAllAddLiquidityTxs'
 import Decimal from 'decimal.js'
+import { sleep } from 'bun'
 
 export const gatewayApiEzMode = new GatewayEzMode()
 
@@ -742,6 +746,37 @@ Bun.serve({
             )
         }
 
+        if (
+            url.pathname === '/pools/precision-historical' &&
+            req.method === 'GET'
+        ) {
+            const component = url.searchParams.get('component')
+
+            if (!component) {
+                return new Response(
+                    JSON.stringify({
+                        error_codes: ['component_required'],
+                    }),
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...corsHeaders,
+                        },
+                    }
+                )
+            }
+
+            return new Response(
+                JSON.stringify(await getOciLpPriceOvertime(component)),
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...corsHeaders,
+                    },
+                }
+            )
+        }
+
         if (url.pathname === '/v2/strategies' && req.method === 'GET') {
             return new Response(JSON.stringify(STRATEGIES_V2_CACHE), {
                 headers: {
@@ -1105,6 +1140,32 @@ async function createAndStoreLpPerformance(date?: Date) {
     console.log('finished getting performance for all pools')
 }
 
+async function createAndStorePrecisionPoolPrice(date?: Date) {
+    const ociPools = (POOLS_CACHE || [])
+        .filter((p) => p.type === 'ociswap' && p.sub_type === 'precision')
+        .map((p) => p.component)
+        .flat()
+
+    console.log('getting precision pool price for all ociswap pools', ociPools)
+    let index = 0
+    for (const pool of ociPools) {
+        const key = `oci-precision-price/${pool}.json`
+
+        const performance = await getOciLpPriceOvertime(pool, date)
+
+        if (performance) {
+            console.log('got performance ', pool)
+            await uploadToS3(key, JSON.stringify(performance))
+            index += 1
+            await sleep(2000)
+            console.log('uploaded 90 day performance ', index)
+        } else {
+            console.log('failed to get performance ', pool)
+        }
+    }
+    console.log('finished getting performance for all pools')
+}
+
 console.log(`Server running on http://localhost:${port}/`)
 
 if (process.env.CACHE_DIR) {
@@ -1151,12 +1212,20 @@ cron.schedule('*/30 * * * *', () => {
     })
 })
 
-// update news cache every 24 hours
+// update lp performance cache every 24 hours
 cron.schedule('0 */23 * * *', () => {
     const last24HoursAgo = new Date(
         new Date().getTime() - 24 * 60 * 60 * 1000 * 8
     )
     createAndStoreLpPerformance(last24HoursAgo)
+})
+
+// update lp performance cache every 24 hours
+cron.schedule('0 */24 * * *', () => {
+    const last24HoursAgo = new Date(
+        new Date().getTime() - 24 * 60 * 60 * 1000 * 8
+    )
+    createAndStorePrecisionPoolPrice(last24HoursAgo)
 })
 
 // // update news cache every 24 hours

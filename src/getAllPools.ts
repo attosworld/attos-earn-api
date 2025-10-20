@@ -315,7 +315,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 deposit_link: `https://radix.defiplaza.net/liquidity/add/${d.baseToken}?direction=${base?.single.side === 'base' ? 'quote' : 'base'}`,
                                 ask_price: base?.ask_price,
                                 side: base?.single.side,
-                                fee: base?.fee,
+                                fee: +(base?.fee ?? 0) / 100,
                                 boosted:
                                     !!BOOSTED_POOLS_CACHE[d.address] ||
                                     incentives.has(d.address),
@@ -388,8 +388,8 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                 }),
                                 fee:
                                     base?.single.side === 'base'
-                                        ? base?.fee || '0'
-                                        : quote?.fee || '0',
+                                        ? +(base?.fee || '0')
+                                        : +(quote?.fee || '0'),
                                 volume_per_day: base?.volume_per_day,
                                 tags: [
                                     ...(STABLECOIN_ADDRESSES.has(d.baseToken)
