@@ -176,8 +176,12 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
             dfpPools.data
                 .map(async (d) => {
                     return Promise.all([
-                        getVolumeAndTokenMetadata(d.baseToken),
-                        getVolumeAndTokenMetadata(d.quoteToken),
+                        d.baseToken !== DFP2_RESOURCE_ADDRESS
+                            ? getVolumeAndTokenMetadata(d.baseToken)
+                            : Promise.resolve(undefined),
+                        d.quoteToken !== DFP2_RESOURCE_ADDRESS
+                            ? getVolumeAndTokenMetadata(d.quoteToken)
+                            : Promise.resolve(undefined),
                     ]).then(async ([base, quote]) => {
                         if (!quote && TOKEN_INFO_CACHE[d.quoteToken]) {
                             quote = {} as VolumeAndTokenMetadata
@@ -290,6 +294,15 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                     .div(base.quotePoolState.vaults[1].amount)
                                     .toFixed()
                             }
+                        }
+
+                        if (base?.left_alt === undefined) {
+                            console.log(
+                                base,
+                                `${base?.left_alt ?? base?.right_alt}/${quote?.right_alt}`,
+                                d.baseToken,
+                                d.quoteToken
+                            )
                         }
 
                         return [

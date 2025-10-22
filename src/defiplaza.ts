@@ -210,6 +210,10 @@ export async function getVolumeAndTokenMetadata(
             const singleSide =
                 data.pairState.shortage === 'QuoteShortage' ? 'base' : 'quote'
 
+            const stats = data.stats.length
+                ? data.stats
+                : [{ volumeUSD: 0, lpBaseUSD: 0, lpQuoteUSD: 0 }]
+
             return {
                 component: data.pair.address,
                 dexComponent: data.pair.dexAddress,
@@ -223,8 +227,8 @@ export async function getVolumeAndTokenMetadata(
                 alr_24h: (data.pair.baseAPY + data.pair.quoteAPY) * 100,
                 alr_7d: (data.pair.baseAPY7D + data.pair.quoteAPY7D) * 100,
                 tvl_usd: data.pair.tvlUSD,
-                volume_24h: data.stats[0].volumeUSD,
-                volume_7d: data.stats
+                volume_24h: stats[0].volumeUSD,
+                volume_7d: stats
                     .slice(0, 6)
                     .reduce((acc, curr) => acc + curr.volumeUSD, 0),
                 fee: data.pair.config.fee,
@@ -258,8 +262,8 @@ export async function getVolumeAndTokenMetadata(
                             : data.pair.quoteTVL,
                     volume_24h:
                         singleSide === 'base'
-                            ? data.stats[0].lpBaseUSD
-                            : data.stats[0].lpQuoteUSD,
+                            ? stats[0].lpBaseUSD
+                            : stats[0].lpQuoteUSD,
                     volume_7d:
                         singleSide === 'base'
                             ? data.stats
@@ -277,7 +281,10 @@ export async function getVolumeAndTokenMetadata(
                 },
             } as VolumeAndTokenMetadata
         })
-        .catch(() => null)
+        .catch((e) => {
+            console.error('Failed to fetch volume and token metadata', e)
+            return null
+        })
 }
 
 export interface DefiplazaStakingPool {
