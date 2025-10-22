@@ -149,6 +149,15 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                     : []),
                 ...(bridgedTokens.has(o.x.token.address) ? ['wrapped'] : []),
                 ...(bridgedTokens.has(o.y.token.address) ? ['wrapped'] : []),
+                ...(bridgedTokens.has(o.x.token.address) &&
+                !o.x.token.name.toLowerCase().includes('usd')
+                    ? ['layer 1']
+                    : []),
+                ...(bridgedTokens.has(o.y.token.address) &&
+                !o.y.token.name.toLowerCase().includes('usd')
+                    ? ['layer 1']
+                    : []),
+                ...(bridgedTokens.has(o.y.token.address) ? ['wrapped'] : []),
                 ...((o.x.token.address !== XRD_RESOURCE_ADDRESS &&
                     tokens[o.x.token.address]?.tags) ||
                     []),
@@ -333,6 +342,18 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                                         : []),
                                     ...(bridgedTokens.has(d.baseToken)
                                         ? ['wrapped']
+                                        : []),
+                                    ...(bridgedTokens.has(d.baseToken) &&
+                                    !base?.left_name
+                                        .toLowerCase()
+                                        .includes('usd')
+                                        ? ['layer 1']
+                                        : []),
+                                    ...(bridgedTokens.has(d.quoteToken) &&
+                                    !base?.right_name
+                                        .toLowerCase()
+                                        .includes('usd')
+                                        ? ['layer 1']
                                         : []),
                                     ...(bridgedTokens.has(d.quoteToken)
                                         ? ['wrapped']
