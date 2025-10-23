@@ -661,18 +661,15 @@ export async function getPriceOvertime(
                 stateVersion
             )
 
-            await sleep(2000)
-
-            const tick =
-                componentInfo?.active_tick.variant === 'Some'
-                    ? componentInfo?.active_tick.value
-                    : '0'
+            // await sleep(5000)
 
             return componentInfo
                 ? componentInfo.y_address === XRD_RESOURCE_ADDRESS
-                    ? tickToPrice(new Decimal(tick)).toNumber()
+                    ? new Decimal(componentInfo.price_sqrt).pow(2).toNumber()
                     : new Decimal(1)
-                          .dividedBy(tickToPrice(new Decimal(tick)))
+                          .dividedBy(
+                              new Decimal(componentInfo.price_sqrt).pow(2)
+                          )
                           .toNumber()
                 : 0
         })
@@ -686,18 +683,11 @@ export async function getPriceOvertime(
         latestDate
     )
 
-    await sleep(100)
-
-    const tick =
-        componentInfo?.active_tick.variant === 'Some'
-            ? componentInfo?.active_tick.value
-            : '0'
-
     const latestPrice = componentInfo
         ? componentInfo.y_address === XRD_RESOURCE_ADDRESS
-            ? tickToPrice(new Decimal(tick)).toNumber()
+            ? new Decimal(componentInfo.price_sqrt).pow(2).toNumber()
             : new Decimal(1)
-                  .dividedBy(tickToPrice(new Decimal(tick)))
+                  .dividedBy(new Decimal(componentInfo.price_sqrt).pow(2))
                   .toNumber()
         : 0
 

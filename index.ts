@@ -1185,6 +1185,8 @@ await Promise.all([
 
 isReady = true
 
+// await createAndStorePrecisionPoolPrice()
+
 // await Promise.all([
 //     createAndStoreLpPerformance(
 //         new Date(new Date().getTime() - 24 * 60 * 60 * 1000) // 24 hours ago
