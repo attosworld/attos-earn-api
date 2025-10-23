@@ -58,6 +58,8 @@ export const NEWS_CACHE_DIR = `${CACHE_DIR}/news`
 
 export const ACCOUNT_TX_CACHE_DIR = `${CACHE_DIR}/account_tx`
 
+export const DEFIPLAZA_CACHE_DIR = `${CACHE_DIR}/defiplaza_pools`
+
 if (!existsSync(CACHE_DIR)) {
     // If it doesn't exist, create the directory
     mkdirSync(CACHE_DIR)

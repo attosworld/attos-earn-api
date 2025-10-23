@@ -14,6 +14,7 @@ import {
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
 import { getRadixIncentives } from './radixIncentives'
+import { sleep } from 'bun'
 
 export interface Pool {
     type: string
@@ -305,6 +306,7 @@ export async function getAllPools(bridgedTokens: Set<string>): Promise<Pool[]> {
                             )
                         }
 
+                        await sleep(1000)
                         return [
                             {
                                 type: 'defiplaza',

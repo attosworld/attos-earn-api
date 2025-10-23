@@ -1,8 +1,10 @@
+import { DEFIPLAZA_CACHE_DIR } from '..'
 import {
     DFP2_RESOURCE_ADDRESS,
     XRD_RESOURCE_ADDRESS,
     XUSDC_RESOURCE_ADDRESS,
 } from './resourceAddresses'
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 
 export interface DefiplazaPool {
     address: string
@@ -198,6 +200,32 @@ function getLastSevenDaysVolume(
     return volumeMap
 }
 
+export const getDefiplazaPoolsCache = (
+    address: string
+): VolumeAndTokenMetadata | null => {
+    const cacheFilePath = `${DEFIPLAZA_CACHE_DIR}/${address}.json`
+
+    if (existsSync(cacheFilePath)) {
+        return JSON.parse(
+            readFileSync(cacheFilePath, 'utf-8')
+        ) as VolumeAndTokenMetadata
+    }
+
+    return null
+}
+
+export const writeDefiplazaPoolsCache = (
+    address: string,
+    metadata: VolumeAndTokenMetadata
+) => {
+    if (!existsSync(DEFIPLAZA_CACHE_DIR)) {
+        mkdirSync(DEFIPLAZA_CACHE_DIR)
+    }
+    const cacheFilePath = `${DEFIPLAZA_CACHE_DIR}/${address}.json`
+
+    writeFileSync(cacheFilePath, JSON.stringify(metadata))
+}
+
 export async function getVolumeAndTokenMetadata(
     basePair: string
 ): Promise<VolumeAndTokenMetadata | null> {
@@ -214,7 +242,7 @@ export async function getVolumeAndTokenMetadata(
                 ? data.stats
                 : [{ volumeUSD: 0, lpBaseUSD: 0, lpQuoteUSD: 0 }]
 
-            return {
+            const response = {
                 component: data.pair.address,
                 dexComponent: data.pair.dexAddress,
                 basePool: data.pair.basePool,
@@ -280,10 +308,20 @@ export async function getVolumeAndTokenMetadata(
                                   ),
                 },
             } as VolumeAndTokenMetadata
+
+            writeDefiplazaPoolsCache(basePair, response)
+
+            return response
         })
         .catch((e) => {
             console.error('Failed to fetch volume and token metadata', e)
-            return null
+            const cached = getDefiplazaPoolsCache(basePair)
+
+            if (!cached) {
+                return null
+            }
+
+            return cached
         })
 }
 
